@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Auto Mail</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">EVEANDBOY REPORT AUTOMATION</p>
+        <h1>Auto Mail</h1>
+        <p class="lead">แนบ 3 ไฟล์ แล้วให้ระบบแยก 7 + 4 ไฟล์ เปลี่ยนชื่อ TransferOrderDiff และส่งอีเมลตามชุดที่กำหนด</p>
+      </div>
+      <div class="badge" id="configBadge">กำลังตรวจการตั้งค่า…</div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>1. แนบไฟล์รายงาน</h2>
+          <p>เลือกพร้อมกัน 3 ไฟล์ ระบบจะจำแนกจากชื่อไฟล์ให้อัตโนมัติ</p>
+        </div>
+      </div>
+
+      <label class="dropzone" id="dropzone">
+        <input id="files" type="file" accept=".xlsx" multiple>
+        <span class="drop-icon">＋</span>
+        <strong>คลิกเพื่อเลือก หรือวางไฟล์ที่นี่</strong>
+        <small>TransferOrder / PurchaseOrder / TransferOrderDiff</small>
+      </label>
+
+      <div class="file-grid" id="fileGrid"></div>
+
+      <div class="access-row" id="accessRow" hidden>
+        <label for="accessKey">Access key</label>
+        <input id="accessKey" type="password" placeholder="กรอก access key สำหรับเว็บนี้">
+      </div>
+
+      <div class="actions">
+        <button class="secondary" id="processOnly" disabled>Process Only</button>
+        <button class="primary" id="runSend" disabled>Run &amp; Send Emails</button>
+      </div>
+    </section>
+
+    <section class="panel progress-panel" id="progressPanel" hidden>
+      <div class="progress-title">
+        <div>
+          <h2>2. สถานะการทำงาน</h2>
+          <p id="statusText">กำลังเริ่มงาน…</p>
+        </div>
+        <strong id="progressValue">0%</strong>
+      </div>
+      <div class="progress-track"><div id="progressBar"></div></div>
+      <div class="result" id="result"></div>
+    </section>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>
