@@ -80,11 +80,12 @@ def _year_matches(value: object, year: int) -> bool:
         return value.year == year
     if isinstance(value, str):
         text = value.strip()
-        for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%d/%m/%Y", "%m/%d/%Y"):
-            try:
-                return datetime.strptime(text[:19], fmt).year == year
-            except ValueError:
-                continue
+        # Common source formats are YYYY-MM-DD[ HH:MM:SS], DD/MM/YYYY and MM/DD/YYYY.
+        # Avoid datetime.strptime in the ~1M-row hot loop.
+        if len(text) >= 4 and text[:4].isdigit():
+            return int(text[:4]) == year
+        if len(text) >= 10 and text[6:10].isdigit() and text[2] in "/-" and text[5] in "/-":
+            return int(text[6:10]) == year
     return False
 
 
@@ -99,13 +100,26 @@ def _require_headers(header: tuple[object, ...], names: Iterable[str], source_na
 def _new_output_book(header: tuple[object, ...]) -> tuple[Workbook, object]:
     workbook = Workbook(write_only=True)
     sheet = workbook.create_sheet("Sheet1")
-    sheet.append(list(header))
+    sheet.append(header)
     return workbook, sheet
 
 
-def _save_books(books: dict[str, tuple[Workbook, object]], paths: dict[str, Path]) -> None:
-    for key, (workbook, _) in books.items():
+def _save_books(
+    books: dict[str, tuple[Workbook, object]],
+    paths: dict[str, Path],
+    progress: ProgressCallback | None = None,
+    *,
+    start_pct: int,
+    end_pct: int,
+    label: str,
+) -> None:
+    total = max(len(books), 1)
+    span = max(end_pct - start_pct, 0)
+    for index, (key, (workbook, _)) in enumerate(books.items(), start=1):
         workbook.save(paths[key])
+        if progress:
+            pct = start_pct + int(index / total * span)
+            progress(pct, f"กำลังบันทึก {label}: {index}/{total} ไฟล์")
 
 
 def process_transfer_order(
@@ -115,7 +129,7 @@ def process_transfer_order(
     progress: ProgressCallback | None = None,
 ) -> dict[str, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
-    workbook = load_workbook(source, read_only=True, data_only=False)
+    workbook = load_workbook(source, read_only=True, data_only=False, keep_links=False)
     sheet = workbook[workbook.sheetnames[0]]
     rows = sheet.iter_rows(values_only=True)
     try:
@@ -156,24 +170,31 @@ def process_transfer_order(
             status = str(row[columns["Transfer status"]] or "").strip()
             status_key = f"transfer_status_{status.lower()}"
             if status_key in books:
-                books[status_key][1].append(list(row))
+                books[status_key][1].append(row)
 
             if str(row[columns["From warehouse"]] or "").strip() == "SCX_FFM":
-                books["transfer_scx_ffm_out"][1].append(list(row))
+                books["transfer_scx_ffm_out"][1].append(row)
 
             to_warehouse = str(row[columns["To warehouse"]] or "").strip()
             if to_warehouse == "SCX_FFM":
-                books["transfer_scx_ffm_in"][1].append(list(row))
+                books["transfer_scx_ffm_in"][1].append(row)
             if to_warehouse == "ZZ_CNN":
-                books["transfer_zz_cnn_in"][1].append(list(row))
+                books["transfer_zz_cnn_in"][1].append(row)
 
             if progress and row_number % 10000 == 0:
-                pct = min(44, int((row_number - 1) / total * 44))
+                pct = min(38, int((row_number - 1) / total * 38))
                 progress(pct, f"กำลังแยก TransferOrder: {row_number - 1:,}/{total:,} แถว")
     finally:
         workbook.close()
 
-    _save_books(books, paths)
+    _save_books(
+        books,
+        paths,
+        progress,
+        start_pct=38,
+        end_pct=45,
+        label="TransferOrder",
+    )
     if progress:
         progress(45, "แยก TransferOrder เป็น 7 ไฟล์เรียบร้อย")
     return paths
@@ -186,7 +207,7 @@ def process_purchase_order(
     progress: ProgressCallback | None = None,
 ) -> dict[str, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
-    workbook = load_workbook(source, read_only=True, data_only=False)
+    workbook = load_workbook(source, read_only=True, data_only=False, keep_links=False)
     sheet = workbook[workbook.sheetnames[0]]
     rows = sheet.iter_rows(values_only=True)
     try:
@@ -218,15 +239,22 @@ def process_purchase_order(
             location = str(row[columns["INVENTLOCATIONID"]] or "").strip()
             key = location_to_key.get(location)
             if key:
-                books[key][1].append(list(row))
+                books[key][1].append(row)
 
             if progress and row_number % 10000 == 0:
-                pct = 45 + min(39, int((row_number - 1) / total * 39))
+                pct = 45 + min(34, int((row_number - 1) / total * 34))
                 progress(pct, f"กำลังแยก PurchaseOrder: {row_number - 1:,}/{total:,} แถว")
     finally:
         workbook.close()
 
-    _save_books(books, paths)
+    _save_books(
+        books,
+        paths,
+        progress,
+        start_pct=79,
+        end_pct=85,
+        label="PurchaseOrder",
+    )
     if progress:
         progress(85, "แยก PurchaseOrder เป็น 4 ไฟล์เรียบร้อย")
     return paths
