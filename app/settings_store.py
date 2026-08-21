@@ -73,7 +73,11 @@ def load_email_settings(
     stored = _load_stored(settings_path)
     stored_jobs = stored.get("jobs", {}) if isinstance(stored.get("jobs", {}), dict) else {}
 
-    test_email = str(stored.get("test_email", "")).strip() or default_test_email.strip()
+    if "test_email" in stored:
+        test_email = str(stored.get("test_email", "")).strip()
+    else:
+        test_email = default_test_email.strip()
+
     jobs: list[dict[str, Any]] = []
     for template in templates:
         job_id = str(template.get("id", ""))
@@ -146,4 +150,4 @@ def save_email_settings(
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     tmp.replace(settings_path)
 
-    return load_email_settings(settings_path, config_path, default_test_email=test_email)
+    return load_email_settings(settings_path, config_path)
