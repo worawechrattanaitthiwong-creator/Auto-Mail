@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import threading
 import uuid
 import zipfile
@@ -13,16 +14,20 @@ from fastapi import BackgroundTasks, FastAPI, File, Form, Header, HTTPException,
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from .inbox import GmailInboxWatcher, InboxError, InboxSettings, ReadyBatch
 from .mailer import MailError, load_email_jobs, send_configured_emails
 from .processor import ProcessingError, process_all, validate_upload_set
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "data" / "runs"
+DATA_ROOT = BASE_DIR / "data"
+DATA_DIR = DATA_ROOT / "runs"
+INBOX_DIR = DATA_ROOT / "inbox"
+INBOX_STATE_PATH = DATA_ROOT / "mailbox_state.json"
 CONFIG_PATH = BASE_DIR / "config" / "email_jobs.json"
 STATIC_DIR = BASE_DIR / "app" / "static"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-app = FastAPI(title="Auto Mail", version="0.3.0")
+app = FastAPI(title="Auto Mail", version="0.4.0")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -39,10 +44,25 @@ class RunState:
     error: str | None = None
     send_mode: str = "none"
     test_email: str | None = None
+    source: str = "manual"
 
 
 RUNS: dict[str, RunState] = {}
 RUN_LOCK = threading.Lock()
+WATCHER_STOP = threading.Event()
+WATCHER_THREAD: threading.Thread | None = None
+INBOX_STATUS: dict[str, Any] = {
+    "enabled": False,
+    "configured": False,
+    "status": "disabled",
+    "last_scan": None,
+    "last_error": None,
+    "last_batch": None,
+}
+
+
+def _enabled(name: str, default: str = "false") -> bool:
+    return os.getenv(name, default).lower() in {"1", "true", "yes", "on"}
 
 
 def require_access_key(x_app_key: str | None) -> None:
@@ -56,6 +76,28 @@ def update_run(run_id: str, **changes: Any) -> None:
         state = RUNS[run_id]
         for key, value in changes.items():
             setattr(state, key, value)
+
+
+def _email_config() -> dict[str, Any]:
+    jobs = load_email_jobs(CONFIG_PATH)
+    enabled_jobs = [job for job in jobs if job.get("enabled", False)]
+    email_send_enabled = _enabled("EMAIL_SEND_ENABLED")
+    smtp_configured = all(os.getenv(key) for key in ("SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD", "SMTP_FROM"))
+    jobs_with_recipients = sum(1 for job in enabled_jobs if job.get("to"))
+    live_ready = (
+        email_send_enabled
+        and smtp_configured
+        and bool(enabled_jobs)
+        and jobs_with_recipients == len(enabled_jobs)
+    )
+    return {
+        "jobs": jobs,
+        "enabled_jobs": enabled_jobs,
+        "email_send_enabled": email_send_enabled,
+        "smtp_configured": smtp_configured,
+        "jobs_with_recipients": jobs_with_recipients,
+        "live_ready": live_ready,
+    }
 
 
 def run_pipeline(
@@ -116,6 +158,94 @@ def run_pipeline(
         update_run(run_id, status="failed", error=str(exc), message="งานไม่สำเร็จ")
 
 
+def _launch_inbox_batch(watcher: GmailInboxWatcher, batch: ReadyBatch) -> str:
+    run_id = "mail-" + uuid.uuid4().hex[:10]
+    input_dir = DATA_DIR / run_id / "inputs"
+    input_dir.mkdir(parents=True, exist_ok=True)
+
+    input_paths: dict[str, Path] = {}
+    for kind, source in batch.paths.items():
+        target = input_dir / source.name
+        shutil.copy2(source, target)
+        input_paths[kind] = target
+
+    state = RunState(
+        id=run_id,
+        report_date=batch.report_date.strftime("%d-%m-%Y"),
+        send_mode="live",
+        message="Inbox พบรายงานครบ 3 ไฟล์แล้ว",
+        source="gmail_inbox",
+    )
+    with RUN_LOCK:
+        RUNS[run_id] = state
+
+    # Claim the date before launching so a second poll cannot send the same batch twice.
+    watcher.mark_launched(batch.report_date)
+    worker = threading.Thread(
+        target=run_pipeline,
+        args=(run_id, input_paths, batch.report_date, "live", None),
+        daemon=True,
+        name=f"auto-mail-run-{run_id}",
+    )
+    worker.start()
+    return run_id
+
+
+def _inbox_watch_loop() -> None:
+    INBOX_STATUS.update(enabled=True, status="starting", last_error=None)
+    try:
+        settings = InboxSettings.from_env()
+        watcher = GmailInboxWatcher(settings, INBOX_DIR, INBOX_STATE_PATH)
+        INBOX_STATUS.update(configured=True, status="waiting")
+    except InboxError as exc:
+        INBOX_STATUS.update(configured=False, status="error", last_error=str(exc))
+        return
+
+    while not WATCHER_STOP.is_set():
+        try:
+            mail_config = _email_config()
+            if not mail_config["live_ready"]:
+                INBOX_STATUS.update(status="waiting_email_config", last_error=None)
+            else:
+                ready_batches = watcher.scan_once()
+                INBOX_STATUS.update(
+                    status="watching",
+                    last_scan=datetime.now().isoformat(timespec="seconds"),
+                    last_error=None,
+                )
+                for batch in ready_batches:
+                    run_id = _launch_inbox_batch(watcher, batch)
+                    INBOX_STATUS.update(
+                        status="processing",
+                        last_batch={"report_date": batch.report_date.isoformat(), "run_id": run_id},
+                    )
+        except Exception as exc:
+            INBOX_STATUS.update(
+                status="error",
+                last_scan=datetime.now().isoformat(timespec="seconds"),
+                last_error=str(exc),
+            )
+        WATCHER_STOP.wait(settings.poll_seconds)
+
+
+@app.on_event("startup")
+def start_inbox_watcher() -> None:
+    global WATCHER_THREAD
+    if not _enabled("INBOX_WATCH_ENABLED"):
+        INBOX_STATUS.update(enabled=False, configured=False, status="disabled")
+        return
+    if WATCHER_THREAD and WATCHER_THREAD.is_alive():
+        return
+    WATCHER_STOP.clear()
+    WATCHER_THREAD = threading.Thread(target=_inbox_watch_loop, daemon=True, name="gmail-inbox-watcher")
+    WATCHER_THREAD.start()
+
+
+@app.on_event("shutdown")
+def stop_inbox_watcher() -> None:
+    WATCHER_STOP.set()
+
+
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
@@ -128,27 +258,32 @@ def health() -> dict[str, str]:
 
 @app.get("/api/config-status")
 def config_status(_: None = Header(default=None, alias="X-Ignored")) -> dict[str, Any]:
-    jobs = load_email_jobs(CONFIG_PATH)
-    enabled = [job for job in jobs if job.get("enabled", False)]
-    email_send_enabled = os.getenv("EMAIL_SEND_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
-    smtp_configured = all(os.getenv(key) for key in ("SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD", "SMTP_FROM"))
-    jobs_with_recipients = sum(1 for job in enabled if job.get("to"))
-    drive_fallback_enabled = os.getenv("DRIVE_FALLBACK_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
+    mail_config = _email_config()
+    enabled_jobs = mail_config["enabled_jobs"]
+    drive_fallback_enabled = _enabled("DRIVE_FALLBACK_ENABLED")
     drive_configured = all(
         os.getenv(key)
         for key in ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN")
     )
+    inbox_enabled = _enabled("INBOX_WATCH_ENABLED")
+    inbox_configured = bool(
+        os.getenv("INBOX_USERNAME", os.getenv("SMTP_USERNAME", "")).strip()
+        and os.getenv("INBOX_PASSWORD", os.getenv("SMTP_PASSWORD", ""))
+    )
     return {
-        "email_send_enabled": email_send_enabled,
-        "smtp_configured": smtp_configured,
-        "jobs_total": len(jobs),
-        "jobs_enabled": len(enabled),
-        "jobs_with_recipients": jobs_with_recipients,
-        "test_ready": email_send_enabled and smtp_configured and bool(enabled),
-        "live_ready": email_send_enabled and smtp_configured and bool(enabled) and jobs_with_recipients == len(enabled),
+        "email_send_enabled": mail_config["email_send_enabled"],
+        "smtp_configured": mail_config["smtp_configured"],
+        "jobs_total": len(mail_config["jobs"]),
+        "jobs_enabled": len(enabled_jobs),
+        "jobs_with_recipients": mail_config["jobs_with_recipients"],
+        "test_ready": mail_config["email_send_enabled"] and mail_config["smtp_configured"] and bool(enabled_jobs),
+        "live_ready": mail_config["live_ready"],
         "drive_fallback_enabled": drive_fallback_enabled,
         "drive_configured": drive_configured,
         "direct_attachment_max_mb": float(os.getenv("DIRECT_ATTACHMENT_MAX_MB", "20")),
+        "inbox_watch_enabled": inbox_enabled,
+        "inbox_configured": inbox_configured,
+        "inbox_status": dict(INBOX_STATUS),
         "access_key_required": bool(os.getenv("APP_ACCESS_KEY", "").strip()),
     }
 
@@ -204,6 +339,7 @@ async def create_run(
         send_mode=send_mode,
         test_email=test_email,
         message="อัปโหลดไฟล์ครบแล้ว",
+        source="manual",
     )
     with RUN_LOCK:
         RUNS[run_id] = state
