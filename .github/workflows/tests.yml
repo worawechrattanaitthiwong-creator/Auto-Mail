@@ -26,5 +26,11 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
 
+      - name: Python syntax check
+        run: python -m py_compile app/main.py app/output_bundle.py
+
+      - name: JavaScript syntax check
+        run: node --check app/static/app.js
+
       - name: Run tests
         run: python -m pytest -q
