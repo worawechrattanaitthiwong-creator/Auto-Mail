@@ -1,18 +1,22 @@
 # Auto-Mail
 
-เว็บแอปสำหรับงานรายงาน 3 ไฟล์:
+เว็บแอปสำหรับงานรายงานรอบ **19.00** โดยรับไฟล์ต้นทาง 3 ชนิด:
 
 1. `TransferOrder_YYYYMMDD...xlsx` → แยกเป็น 7 ไฟล์ตาม logic เดิมใน VBA
 2. `PurchaseOrder_YYYYMMDD...xlsx` → แยกเป็น 4 ไฟล์ตาม logic เดิมใน VBA
 3. `TransferOrderDiff_YYYYMMDD...xlsx` → ไม่แยกข้อมูล เปลี่ยนชื่อเป็น `TransferOrderDiff_ DD-MM-YYYY Time 19.00.xlsx`
 
-จากนั้นระบบจัด 12 ไฟล์เข้า 6 email jobs และรองรับ To / CC / Subject / Body ที่กำหนดไว้ใน `config/email_jobs.json`.
+จากนั้นระบบจัด output 12 ไฟล์เข้า 6 email jobs พร้อม To / CC / Subject / Body ตาม `config/email_jobs.json`.
 
-## Logic ที่ย้ายมาจาก VBA
+> รอบ 09.00 ไม่อยู่ใน automation นี้และส่งเองตาม workflow เดิม
 
-### TransferOrder → 7 files
+## Output time
 
-กรองปีจาก `Created date` ตามปีที่อ่านจากชื่อไฟล์ แล้วสร้าง:
+ชื่อไฟล์, Subject และ Body ของรอบอัตโนมัติใช้เวลา `19.00` ทั้งหมด โดยวันที่อ่านจากชื่อไฟล์ต้นทาง (`YYYYMMDD`).
+
+## TransferOrder → 7 files
+
+กรองปีจาก `Created date` แล้วสร้าง:
 
 - `Transfer status = Received`
 - `Transfer status = Created`
@@ -22,7 +26,7 @@
 - `To warehouse = SCX_FFM` → `Dynamics SCX_FFM IN ...xlsx`
 - `To warehouse = ZZ_CNN` → `Dynamics ZZ_CNN IN ...xlsx`
 
-### PurchaseOrder → 4 files
+## PurchaseOrder → 4 files
 
 กรองปีจาก `PurchaseCreatedDateTime` และ `INVENTLOCATIONID`:
 
@@ -31,20 +35,51 @@
 - `SCX_FFM` → `Rc.SCX_FFM ...xlsx`
 - `SCX_XD` → `Rc.SCX_XD ...xlsx`
 
-วันที่สำหรับ output ทั้งหมดอ่านจากชื่อ input (`YYYYMMDD`) จึงไม่ต้องกรอกปีหรือวันที่เอง.
-
 ## Email jobs 6 ชุด
 
-Template ใน `config/email_jobs.json` เรียงตามตัวอย่างเมลจริง:
+1. Transfer SCX_FFM B2C In/Out + PO SCX_FFM → 3 files
+2. Transfer ZZ_CNN + PRT.ZZ_CNN → 2 files
+3. Transfer Shipped + Created + PO SCX_WH1 → 3 files
+4. Purchase SCX_XD → 1 file
+5. Transfer Received → 1 file
+6. Transfer Deleted + TransferOrderDiff → 2 files
 
-1. Transfer SCX_FFM B2C In/Out + PO SCX_FFM → 3 attachments
-2. Transfer ZZ_CNN + PRT.ZZ_CNN → 2 attachments
-3. Transfer Shipped + Created + PO SCX_WH1 → 3 attachments
-4. Purchase SCX_XD → 1 attachment
-5. Transfer Received → 1 attachment
-6. Transfer Deleted + TransferOrderDiff → 2 attachments
+Subject/Body ใช้ `{date_slash}` (`DD/MM/YYYY`) และ `{time}` (`19.00`).
 
-Subject และ Body ใช้วันที่ `{date_slash}` (`DD/MM/YYYY`) และเวลา `19.00` อัตโนมัติ. ช่อง `to` และ `cc` ยังเว้นว่างไว้จนกว่าจะได้รับรายชื่อผู้รับจริง.
+## Hybrid delivery: แนบได้ให้แนบ / ใหญ่เกินให้เป็นลิงก์
+
+ระบบพยายามแนบ `.xlsx` โดยตรงก่อนเสมอ และใช้ค่า `DIRECT_ATTACHMENT_MAX_MB` เป็นเพดาน **ขนาดอีเมลโดยประมาณหลัง Base64/MIME** ไม่ใช่แค่ขนาดไฟล์ดิบ.
+
+ค่าเริ่มต้น:
+
+```env
+DIRECT_ATTACHMENT_MAX_MB=20
+```
+
+ถ้าเมลหนึ่งมีหลายไฟล์และเกินเพดาน ระบบจะย้ายไฟล์ที่ใหญ่ที่สุดไป Google Drive ทีละไฟล์จนส่วนที่เหลือปลอดภัยต่อการแนบ ดังนั้นเมลหนึ่งฉบับสามารถเป็นได้ 3 แบบ:
+
+- `attachment` — ทุกไฟล์แนบตรง
+- `hybrid` — บางไฟล์แนบตรง + บางไฟล์เป็น Drive link
+- `drive_link` — ทุกไฟล์ในฉบับนั้นเป็น Drive link
+
+สำหรับขนาดไฟล์ตัวอย่างปัจจุบัน `Rc.SCX_XD` ประมาณ 24.5 MiB จะถูกส่งเป็น Drive link เมื่อใช้ threshold 20 MB ส่วนชุดอื่นยังแนบตรงตามปกติ.
+
+### Google Drive fallback
+
+Drive fallback ปิดไว้เป็นค่าเริ่มต้นจนกว่าจะตั้ง OAuth ของ Gmail กลาง:
+
+```env
+DRIVE_FALLBACK_ENABLED=true
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_REFRESH_TOKEN=...
+GOOGLE_DRIVE_FOLDER_ID=...
+GOOGLE_DRIVE_SHARE_MODE=anyone_with_link
+```
+
+`anyone_with_link` ใช้ง่ายที่สุดสำหรับผู้รับภายนอก แต่หมายความว่าใครก็ตามที่มี URL สามารถเปิดไฟล์ได้ จึงควรใช้ Gmail/Drive กลางเฉพาะงานนี้และโฟลเดอร์เฉพาะรายงาน.
+
+หาก Drive fallback ยังไม่ถูกตั้งค่าและพบไฟล์เกิน threshold ระบบจะ **หยุดก่อนส่ง** แทนการส่งไม่ครบชุด.
 
 ## 3 โหมดการทำงาน
 
@@ -54,53 +89,30 @@ Subject และ Body ใช้วันที่ `{date_slash}` (`DD/MM/YYYY`)
 
 ### Test Send 6 Emails
 
-กรอกอีเมลทดสอบบนหน้าเว็บ แล้วระบบจะส่ง template ที่เปิดใช้งานทั้ง 6 ฉบับไปที่อีเมลทดสอบเพียงคนเดียว:
+กรอกอีเมลทดสอบบนหน้าเว็บ แล้วระบบส่งทั้ง 6 template ไปที่อีเมลนั้นเพียงคนเดียว:
 
 - ไม่ใช้ To จริง
 - ไม่ใช้ CC จริง
 - เติม `[TEST]` หน้า Subject
-- ใช้ Body และ attachments จริง เพื่อให้ตรวจสอบก่อนเปิดใช้งาน
+- ใช้ Body และไฟล์/Drive link แบบเดียวกับการส่งจริง
 
 ### Live Send
 
-ส่งไปยัง To/CC จริงจาก `config/email_jobs.json`. ปุ่ม Live Send จะยังไม่พร้อมใช้งานถ้า email job ใดที่เปิดใช้งานยังไม่มี `to`.
+ส่ง To/CC จริงตาม `config/email_jobs.json`. หน้าเว็บจะไม่เปิด Live Send จนกว่า job ที่เปิดใช้งานทุกชุดจะมี To และมี confirmation ก่อนส่ง.
 
-ก่อน Live Send หน้าเว็บมี confirmation เพิ่มอีกชั้น.
+## ตั้งค่า Gmail สำหรับส่งเมล
 
-## ตั้งค่าเมลส่วนตัว
-
-คัดลอก `.env.example` เป็น `.env` ในเครื่อง/hosting แล้วตั้งค่า SMTP. **ห้าม commit รหัสผ่านหรือ App Password ลง GitHub.**
-
-ตัวอย่าง Gmail:
+เก็บค่าลับใน `.env` หรือ Hosting Secrets เท่านั้น **ห้าม commit password / App Password / OAuth token ลง GitHub**.
 
 ```env
 EMAIL_SEND_ENABLED=true
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
-SMTP_USERNAME=your-personal-email@gmail.com
+SMTP_USERNAME=your-central-mail@gmail.com
 SMTP_PASSWORD=your-google-app-password
-SMTP_FROM=your-personal-email@gmail.com
+SMTP_FROM=your-central-mail@gmail.com
 SMTP_USE_TLS=true
 SMTP_USE_SSL=false
-SMTP_MAX_MESSAGE_MB=25
-```
-
-สำหรับ Gmail ให้ใช้ App Password (ถ้าบัญชีรองรับ) แทนรหัสผ่านบัญชีปกติ. ระบบจะประเมินขนาดเมลหลัง base64 และหยุดก่อนส่งถ้าเกิน `SMTP_MAX_MESSAGE_MB`.
-
-ถ้าเว็บเปิดผ่านอินเทอร์เน็ต ควรตั้ง `APP_ACCESS_KEY` เพื่อกันบุคคลอื่นกดส่งเมล.
-
-## ตัวอย่าง To / CC
-
-```json
-{
-  "id": "transfer_received",
-  "enabled": true,
-  "to": ["person@example.com"],
-  "cc": ["manager@example.com"],
-  "subject": "อัปเดต Transfer Order lines all Store status Received {date_slash} Time {time}น",
-  "body": "เรียน ผู้เกี่ยวข้อง\n...",
-  "attachments": ["transfer_status_received"]
-}
 ```
 
 ## Run locally
@@ -121,14 +133,9 @@ docker build -t auto-mail .
 docker run --env-file .env -p 8000:8000 auto-mail
 ```
 
-## การใช้งาน
+## Planned next step
 
-1. เลือก 3 ไฟล์พร้อมกัน
-2. ระบบตรวจชื่อและวันที่ของทั้ง 3 ไฟล์
-3. กด `Process Only` เพื่อตรวจ output
-4. กรอกอีเมลตัวเองแล้วกด `Test Send 6 Emails` เพื่อตรวจ Subject / Body / attachments
-5. เมื่อ To/CC จริงและ SMTP พร้อมแล้วจึงใช้ `Live Send`
-6. หน้าเว็บแสดง progress และสามารถดาวน์โหลด output ทั้ง 12 ไฟล์เป็น ZIP ได้
+เพิ่ม central Gmail inbox watcher: ตรวจเมล Transfer Order / Purchase Order / Transfer Order Diff, รอครบ 3 รายงานของวันเดียวกัน, ดาวน์โหลด attachment, ประมวลผล 12 ไฟล์ และส่ง 6 เมลรอบ 19.00 อัตโนมัติ โดยยังเก็บ manual upload เป็น fallback.
 
 ## Tests
 
