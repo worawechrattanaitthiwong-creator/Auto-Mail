@@ -25,12 +25,12 @@ def test_large_file_moves_to_drive(tmp_path: Path) -> None:
     assert links == ["large"]
 
 
-def test_largest_file_moves_first_until_mail_is_safe(tmp_path: Path) -> None:
+def test_large_email_moves_all_files_to_drive(tmp_path: Path) -> None:
     outputs = {
         "small": make_sized_file(tmp_path / "small.xlsx", 2),
         "medium": make_sized_file(tmp_path / "medium.xlsx", 8),
         "large": make_sized_file(tmp_path / "large.xlsx", 10),
     }
     direct, links = plan_delivery(["small", "medium", "large"], outputs, 20)
-    assert "large" in links
-    assert set(direct) == {"small", "medium"}
+    assert direct == []
+    assert links == ["small", "medium", "large"]
