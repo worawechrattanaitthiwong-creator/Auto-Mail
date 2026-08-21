@@ -39,6 +39,37 @@
       </article>
     </section>
 
+    <section class="panel" id="emailSettingsPanel">
+      <div class="panel-head">
+        <div>
+          <h2>Email Settings — ผู้รับเมล 1–6</h2>
+          <p>กำหนด Test Email, To และ CC ได้เอง แล้วกดบันทึก ระบบจะใช้ค่าที่บันทึกกับทั้ง Manual และ Auto Inbox</p>
+        </div>
+        <span class="badge" id="settingsBadge">กำลังโหลด…</span>
+      </div>
+
+      <div class="access-row" id="accessRow" hidden>
+        <label for="accessKey">Access key</label>
+        <input id="accessKey" type="password" placeholder="กรอก access key แล้วกดออกจากช่องเพื่อโหลด Settings">
+        <small>ใช้สำหรับป้องกันหน้า Settings และคำสั่งส่งเมลเมื่อเว็บเปิดผ่านอินเทอร์เน็ต</small>
+      </div>
+
+      <div class="settings-test">
+        <label for="testEmail">Test Email</label>
+        <input id="testEmail" type="email" autocomplete="email" placeholder="อีเมลที่ต้องการรับ Test Send ทั้ง 6 ฉบับ">
+        <small>Test Send จะส่งไปที่อีเมลนี้เท่านั้น และไม่ใช้ To/CC จริง</small>
+      </div>
+
+      <div class="settings-grid" id="emailJobsSettings">
+        <div class="settings-placeholder">กำลังโหลดผู้รับเมล 1–6…</div>
+      </div>
+
+      <div class="settings-footer">
+        <div class="settings-message" id="settingsMessage">แก้ไขแล้วกด Save Settings เพื่อบันทึก</div>
+        <button class="primary" id="saveEmailSettings" disabled>Save Settings</button>
+      </div>
+    </section>
+
     <section class="panel">
       <div class="panel-head">
         <div>
@@ -56,23 +87,12 @@
 
       <div class="file-grid" id="fileGrid"></div>
 
-      <div class="access-row" id="testEmailRow">
-        <label for="testEmail">อีเมลสำหรับทดสอบ</label>
-        <input id="testEmail" type="email" autocomplete="email" placeholder="เช่น yourname@gmail.com">
-        <small>Test Send จะส่งทั้ง 6 ฉบับมาที่อีเมลนี้เท่านั้น และจะไม่ใช้ To/CC จริง</small>
-      </div>
-
-      <div class="access-row" id="accessRow" hidden>
-        <label for="accessKey">Access key</label>
-        <input id="accessKey" type="password" placeholder="กรอก access key สำหรับเว็บนี้">
-      </div>
-
       <div class="actions">
         <button class="secondary" id="processOnly" disabled>Process Only</button>
         <button class="secondary" id="testSend" disabled>Test Send 6 Emails</button>
         <button class="primary" id="runSend" disabled>Live Send</button>
       </div>
-      <p class="safety-note">Test Send: ไม่ส่ง To/CC จริง · Live Send: ใช้ To/CC ที่ตั้งค่าไว้จริง</p>
+      <p class="safety-note">Test Send: ใช้ Test Email ที่บันทึกไว้ · Live Send: ใช้ To/CC ของเมล 1–6 ที่บันทึกไว้</p>
     </section>
 
     <section class="panel progress-panel" id="progressPanel" hidden>
