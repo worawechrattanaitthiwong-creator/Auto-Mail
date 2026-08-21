@@ -11,6 +11,8 @@ from email.message import EmailMessage
 from pathlib import Path
 from typing import Callable
 
+from .drive import DriveError, GoogleDriveUploader
+
 
 class MailError(RuntimeError):
     pass
@@ -68,6 +70,36 @@ def _looks_like_email(value: str) -> bool:
     return "@" in value and "." in value.rsplit("@", 1)[-1]
 
 
+def _estimated_encoded_mb(paths: list[Path]) -> float:
+    raw_bytes = sum(path.stat().st_size for path in paths)
+    # Base64 expands data by roughly 4/3. Add a small allowance for MIME headers/body.
+    return (raw_bytes * 4 / 3) / (1024 * 1024) + 0.15
+
+
+def plan_delivery(
+    attachment_keys: list[str],
+    outputs: dict[str, Path],
+    direct_attachment_max_mb: float,
+) -> tuple[list[str], list[str]]:
+    """Keep as many files attached as possible; move the largest to Drive until safe."""
+    direct_keys = list(attachment_keys)
+    link_keys: list[str] = []
+
+    while direct_keys:
+        direct_paths = [outputs[key] for key in direct_keys]
+        if _estimated_encoded_mb(direct_paths) <= direct_attachment_max_mb:
+            break
+        largest_key = max(direct_keys, key=lambda key: outputs[key].stat().st_size)
+        direct_keys.remove(largest_key)
+        link_keys.append(largest_key)
+
+    return direct_keys, link_keys
+
+
+def _drive_fallback_enabled() -> bool:
+    return os.getenv("DRIVE_FALLBACK_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
+
+
 def send_configured_emails(
     outputs: dict[str, Path],
     report_date: date,
@@ -92,20 +124,35 @@ def send_configured_emails(
     if not jobs:
         raise MailError("ยังไม่มี email job ที่ enabled=true ใน config/email_jobs.json")
 
-    max_message_mb = float(os.getenv("SMTP_MAX_MESSAGE_MB", "25"))
+    direct_attachment_max_mb = float(os.getenv("DIRECT_ATTACHMENT_MAX_MB", "20"))
+    plans: dict[str, tuple[list[str], list[str]]] = {}
+    needs_drive = False
+
     for job in jobs:
         if mode == "live" and not job.get("to"):
             raise MailError(f"Email job '{job.get('id', 'unknown')}' ยังไม่มีผู้รับ To")
-        missing = [key for key in job.get("attachments", []) if key not in outputs]
+
+        attachment_keys = list(job.get("attachments", []))
+        missing = [key for key in attachment_keys if key not in outputs]
         if missing:
             raise MailError(f"Email job '{job.get('id')}' หาไฟล์แนบไม่พบ: {', '.join(missing)}")
-        raw_bytes = sum(outputs[key].stat().st_size for key in job.get("attachments", []))
-        estimated_message_mb = (raw_bytes * 4 / 3) / (1024 * 1024)
-        if estimated_message_mb > max_message_mb:
-            raise MailError(
-                f"Email job '{job.get('id')}' มีไฟล์แนบใหญ่เกิน limit: "
-                f"ประมาณ {estimated_message_mb:.1f} MB หลังเข้ารหัส (limit {max_message_mb:.1f} MB)"
-            )
+
+        direct_keys, link_keys = plan_delivery(attachment_keys, outputs, direct_attachment_max_mb)
+        plans[str(job.get("id"))] = (direct_keys, link_keys)
+        needs_drive = needs_drive or bool(link_keys)
+
+    if needs_drive and not _drive_fallback_enabled():
+        raise MailError(
+            "มีอีเมลที่ไฟล์แนบใหญ่เกิน DIRECT_ATTACHMENT_MAX_MB แต่ DRIVE_FALLBACK_ENABLED=false"
+        )
+
+    drive: GoogleDriveUploader | None = None
+    drive_cache: dict[str, dict[str, str]] = {}
+    if needs_drive:
+        try:
+            drive = GoogleDriveUploader.from_env()
+        except DriveError as exc:
+            raise MailError(str(exc)) from exc
 
     context = {
         "date": report_date.strftime("%d-%m-%Y"),
@@ -126,10 +173,25 @@ def send_configured_emails(
         smtp.login(settings.username, settings.password)
 
         for index, job in enumerate(jobs, start=1):
+            job_id = str(job.get("id"))
+            direct_keys, link_keys = plans[job_id]
             intended_to = list(job.get("to", []))
             intended_cc = list(job.get("cc", []))
             actual_to = [test_recipient] if mode == "test" else intended_to
             actual_cc: list[str] = [] if mode == "test" else intended_cc
+
+            drive_links: list[dict[str, str]] = []
+            if link_keys:
+                if drive is None:
+                    raise MailError("Google Drive fallback ยังไม่พร้อมใช้งาน")
+                for key in link_keys:
+                    cache_key = str(outputs[key].resolve())
+                    if cache_key not in drive_cache:
+                        try:
+                            drive_cache[cache_key] = drive.upload(outputs[key])
+                        except DriveError as exc:
+                            raise MailError(str(exc)) from exc
+                    drive_links.append(drive_cache[cache_key])
 
             message = EmailMessage()
             message["From"] = settings.from_address
@@ -141,27 +203,49 @@ def send_configured_emails(
             if mode == "test":
                 subject = f"[TEST] {subject}"
             message["Subject"] = subject
-            message.set_content(str(job.get("body", "")).format(**context))
-            for key in job.get("attachments", []):
+
+            body = str(job.get("body", "")).format(**context)
+            if drive_links:
+                lines = [
+                    "",
+                    "ไฟล์ขนาดใหญ่ ระบบเปลี่ยนเป็นลิงก์ Google Drive อัตโนมัติ:",
+                    *[f"- {item['name']}: {item['url']}" for item in drive_links],
+                ]
+                body += "\n" + "\n".join(lines)
+            message.set_content(body)
+
+            for key in direct_keys:
                 _attach_file(message, outputs[key])
 
             smtp.send_message(message)
+
+            if direct_keys and link_keys:
+                delivery = "hybrid"
+            elif link_keys:
+                delivery = "drive_link"
+            else:
+                delivery = "attachment"
+
             result = {
                 "id": job.get("id"),
                 "name": job.get("name", job.get("id")),
                 "mode": mode,
+                "delivery": delivery,
                 "to": actual_to,
                 "cc": actual_cc,
                 "intended_to": intended_to,
                 "intended_cc": intended_cc,
                 "subject": message["Subject"],
-                "attachments": [outputs[key].name for key in job.get("attachments", [])],
+                "attachments": [outputs[key].name for key in direct_keys],
+                "drive_links": drive_links,
+                "all_files": [outputs[key].name for key in job.get("attachments", [])],
                 "status": "sent",
             }
             results.append(result)
             if progress:
                 pct = 87 + int(index / max(len(jobs), 1) * 13)
                 label = "ทดสอบส่ง" if mode == "test" else "ส่งอีเมล"
-                progress(min(pct, 100), f"{label} {index}/{len(jobs)} สำเร็จ")
+                suffix = " (Drive link)" if link_keys else ""
+                progress(min(pct, 100), f"{label} {index}/{len(jobs)} สำเร็จ{suffix}")
 
     return results
