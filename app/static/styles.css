@@ -23,6 +23,13 @@ h1 { font-size: clamp(34px, 6vw, 58px); line-height: 1; margin: 0 0 14px; letter
 .badge { white-space: nowrap; padding: 10px 14px; border: 1px solid var(--line); border-radius: 999px; background: white; font-size: 13px; font-weight: 700; }
 .badge.ok { color: var(--success); border-color: #b8dfcc; background: #f0fbf5; }
 .badge.warn { color: #8a5b00; border-color: #f0d594; background: #fff9e8; }
+.mode-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; margin-bottom: 18px; }
+.mode-card { background: white; border: 1px solid var(--line); border-radius: 20px; padding: 22px; box-shadow: 0 12px 32px rgba(31, 41, 55, .055); }
+.mode-card h2 { margin-top: 18px; }
+.mode-card p { margin: 0; color: var(--muted); line-height: 1.55; }
+.mode-topline { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.mode-number { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--accent); color: white; font-weight: 900; }
+.mode-detail { margin-top: 16px; padding: 12px 14px; border-radius: 12px; background: var(--soft); color: var(--muted); font-size: 13px; line-height: 1.5; }
 .panel { background: white; border: 1px solid var(--line); border-radius: 20px; padding: 26px; box-shadow: 0 16px 45px rgba(31, 41, 55, .07); margin-top: 18px; }
 .panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
 h2 { margin: 0 0 6px; font-size: 20px; }
@@ -59,6 +66,7 @@ button.secondary { color: var(--ink); background: white; }
 @media (max-width: 720px) {
   .shell { margin-top: 24px; }
   .hero { flex-direction: column; }
+  .mode-grid { grid-template-columns: 1fr; }
   .file-grid { grid-template-columns: 1fr; }
   .actions { flex-direction: column-reverse; }
   button { width: 100%; }
