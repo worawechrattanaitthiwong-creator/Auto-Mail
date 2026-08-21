@@ -3,12 +3,15 @@ services:
     name: auto-mail
     runtime: docker
     plan: free
+    region: singapore
     healthCheckPath: /api/health
     dockerfilePath: ./Dockerfile
     dockerContext: .
     envVars:
+      - key: ACCESS_CONTROL_ENABLED
+        value: "false"
       - key: APP_ACCESS_KEY
-        generateValue: true
+        sync: false
       - key: DATABASE_URL
         sync: false
       - key: EMAIL_SEND_ENABLED
@@ -29,6 +32,8 @@ services:
         value: "true"
       - key: SMTP_USE_SSL
         value: "false"
+      - key: XLSX_COMPRESSION_LEVEL
+        value: "1"
       - key: DIRECT_ATTACHMENT_MAX_MB
         value: "20"
       - key: DRIVE_FALLBACK_ENABLED
