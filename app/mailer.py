@@ -77,12 +77,20 @@ def send_configured_emails(
     if not jobs:
         raise MailError("ยังไม่มี email job ที่ enabled=true ใน config/email_jobs.json")
 
+    max_message_mb = float(os.getenv("SMTP_MAX_MESSAGE_MB", "25"))
     for job in jobs:
         if not job.get("to"):
             raise MailError(f"Email job '{job.get('id', 'unknown')}' ยังไม่มีผู้รับ To")
         missing = [key for key in job.get("attachments", []) if key not in outputs]
         if missing:
             raise MailError(f"Email job '{job.get('id')}' หาไฟล์แนบไม่พบ: {', '.join(missing)}")
+        raw_bytes = sum(outputs[key].stat().st_size for key in job.get("attachments", []))
+        estimated_message_mb = (raw_bytes * 4 / 3) / (1024 * 1024)
+        if estimated_message_mb > max_message_mb:
+            raise MailError(
+                f"Email job '{job.get('id')}' มีไฟล์แนบใหญ่เกิน limit: "
+                f"ประมาณ {estimated_message_mb:.1f} MB หลังเข้ารหัส (limit {max_message_mb:.1f} MB)"
+            )
 
     context = {
         "date": report_date.strftime("%d-%m-%Y"),
