@@ -81,19 +81,12 @@ def plan_delivery(
     outputs: dict[str, Path],
     direct_attachment_max_mb: float,
 ) -> tuple[list[str], list[str]]:
-    """Keep as many files attached as possible; move the largest to Drive until safe."""
-    direct_keys = list(attachment_keys)
-    link_keys: list[str] = []
-
-    while direct_keys:
-        direct_paths = [outputs[key] for key in direct_keys]
-        if _estimated_encoded_mb(direct_paths) <= direct_attachment_max_mb:
-            break
-        largest_key = max(direct_keys, key=lambda key: outputs[key].stat().st_size)
-        direct_keys.remove(largest_key)
-        link_keys.append(largest_key)
-
-    return direct_keys, link_keys
+    """Use either all direct attachments or all Drive links for one email."""
+    attachment_keys = list(attachment_keys)
+    paths = [outputs[key] for key in attachment_keys]
+    if _estimated_encoded_mb(paths) <= direct_attachment_max_mb:
+        return attachment_keys, []
+    return [], attachment_keys
 
 
 def _drive_fallback_enabled() -> bool:
@@ -143,7 +136,7 @@ def send_configured_emails(
 
     if needs_drive and not _drive_fallback_enabled():
         raise MailError(
-            "มีอีเมลที่ไฟล์แนบใหญ่เกิน DIRECT_ATTACHMENT_MAX_MB แต่ DRIVE_FALLBACK_ENABLED=false"
+            "มีอีเมลที่ไฟล์แนบรวมใหญ่เกิน DIRECT_ATTACHMENT_MAX_MB แต่ DRIVE_FALLBACK_ENABLED=false"
         )
 
     drive: GoogleDriveUploader | None = None
@@ -208,7 +201,7 @@ def send_configured_emails(
             if drive_links:
                 lines = [
                     "",
-                    "ไฟล์ขนาดใหญ่ ระบบเปลี่ยนเป็นลิงก์ Google Drive อัตโนมัติ:",
+                    "ไฟล์แนบรวมมีขนาดใหญ่ ระบบจึงส่งเป็นลิงก์ Google Drive แทนทั้งหมด:",
                     *[f"- {item['name']}: {item['url']}" for item in drive_links],
                 ]
                 body += "\n" + "\n".join(lines)
@@ -219,13 +212,7 @@ def send_configured_emails(
 
             smtp.send_message(message)
 
-            if direct_keys and link_keys:
-                delivery = "hybrid"
-            elif link_keys:
-                delivery = "drive_link"
-            else:
-                delivery = "attachment"
-
+            delivery = "drive_link" if link_keys else "attachment"
             result = {
                 "id": job.get("id"),
                 "name": job.get("name", job.get("id")),
@@ -245,7 +232,7 @@ def send_configured_emails(
             if progress:
                 pct = 87 + int(index / max(len(jobs), 1) * 13)
                 label = "ทดสอบส่ง" if mode == "test" else "ส่งอีเมล"
-                suffix = " (Drive link)" if link_keys else ""
+                suffix = " (Drive link ทั้งชุด)" if link_keys else " (แนบไฟล์ทั้งหมด)"
                 progress(min(pct, 100), f"{label} {index}/{len(jobs)} สำเร็จ{suffix}")
 
     return results
