@@ -22,7 +22,7 @@ CONFIG_PATH = BASE_DIR / "config" / "email_jobs.json"
 STATIC_DIR = BASE_DIR / "app" / "static"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-app = FastAPI(title="Auto Mail", version="0.1.0")
+app = FastAPI(title="Auto Mail", version="0.2.0")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -37,7 +37,8 @@ class RunState:
     outputs: list[str] = field(default_factory=list)
     emails: list[dict[str, Any]] = field(default_factory=list)
     error: str | None = None
-    send_email: bool = True
+    send_mode: str = "none"
+    test_email: str | None = None
 
 
 RUNS: dict[str, RunState] = {}
@@ -57,7 +58,13 @@ def update_run(run_id: str, **changes: Any) -> None:
             setattr(state, key, value)
 
 
-def run_pipeline(run_id: str, input_paths: dict[str, Path], report_date: date, send_email: bool) -> None:
+def run_pipeline(
+    run_id: str,
+    input_paths: dict[str, Path],
+    report_date: date,
+    send_mode: str,
+    test_email: str | None,
+) -> None:
     run_dir = DATA_DIR / run_id
     output_dir = run_dir / "outputs"
 
@@ -76,15 +83,33 @@ def run_pipeline(run_id: str, input_paths: dict[str, Path], report_date: date, s
         update_run(run_id, outputs=sorted(path.name for path in outputs.values()))
 
         emails: list[dict[str, Any]] = []
-        if send_email:
-            update_run(run_id, status="sending", message="กำลังส่งอีเมล")
-            emails = send_configured_emails(outputs, report_date, CONFIG_PATH, progress)
+        if send_mode in {"test", "live"}:
+            update_run(
+                run_id,
+                status="sending",
+                message="กำลังทดสอบส่งอีเมล" if send_mode == "test" else "กำลังส่งอีเมลจริง",
+            )
+            emails = send_configured_emails(
+                outputs,
+                report_date,
+                CONFIG_PATH,
+                progress,
+                mode=send_mode,
+                test_recipient=test_email,
+            )
+
+        if send_mode == "test":
+            final_message = f"ประมวลผลไฟล์และทดสอบส่ง {len(emails)} อีเมลไปที่ {test_email} เรียบร้อย"
+        elif send_mode == "live":
+            final_message = f"ประมวลผลและส่งอีเมลจริง {len(emails)} ฉบับเรียบร้อย"
+        else:
+            final_message = "ประมวลผลไฟล์เรียบร้อย (ไม่ได้ส่งอีเมล)"
 
         update_run(
             run_id,
             status="completed",
             progress=100,
-            message="ประมวลผลและส่งอีเมลเรียบร้อย" if send_email else "ประมวลผลไฟล์เรียบร้อย (ไม่ได้ส่งอีเมล)",
+            message=final_message,
             emails=emails,
         )
     except (ProcessingError, MailError, Exception) as exc:
@@ -105,12 +130,17 @@ def health() -> dict[str, str]:
 def config_status(_: None = Header(default=None, alias="X-Ignored")) -> dict[str, Any]:
     jobs = load_email_jobs(CONFIG_PATH)
     enabled = [job for job in jobs if job.get("enabled", False)]
+    email_send_enabled = os.getenv("EMAIL_SEND_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
+    smtp_configured = all(os.getenv(key) for key in ("SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD", "SMTP_FROM"))
+    jobs_with_recipients = sum(1 for job in enabled if job.get("to"))
     return {
-        "email_send_enabled": os.getenv("EMAIL_SEND_ENABLED", "false").lower() in {"1", "true", "yes", "on"},
-        "smtp_configured": all(os.getenv(key) for key in ("SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD", "SMTP_FROM")),
+        "email_send_enabled": email_send_enabled,
+        "smtp_configured": smtp_configured,
         "jobs_total": len(jobs),
         "jobs_enabled": len(enabled),
-        "jobs_with_recipients": sum(1 for job in enabled if job.get("to")),
+        "jobs_with_recipients": jobs_with_recipients,
+        "test_ready": email_send_enabled and smtp_configured and bool(enabled),
+        "live_ready": email_send_enabled and smtp_configured and bool(enabled) and jobs_with_recipients == len(enabled),
         "access_key_required": bool(os.getenv("APP_ACCESS_KEY", "").strip()),
     }
 
@@ -119,12 +149,22 @@ def config_status(_: None = Header(default=None, alias="X-Ignored")) -> dict[str
 async def create_run(
     background_tasks: BackgroundTasks,
     files: list[UploadFile] = File(...),
-    send_email: bool = Form(True),
+    send_mode: str = Form("none"),
+    test_email: str | None = Form(None),
     x_app_key: str | None = Header(default=None),
 ) -> JSONResponse:
     require_access_key(x_app_key)
     if len(files) != 3:
         raise HTTPException(status_code=400, detail="กรุณาแนบไฟล์ 3 ไฟล์พอดี")
+    if send_mode not in {"none", "test", "live"}:
+        raise HTTPException(status_code=400, detail="send_mode ต้องเป็น none, test หรือ live")
+    if send_mode == "test":
+        candidate = (test_email or "").strip()
+        if "@" not in candidate or "." not in candidate.rsplit("@", 1)[-1]:
+            raise HTTPException(status_code=400, detail="กรุณากรอกอีเมลทดสอบให้ถูกต้อง")
+        test_email = candidate
+    else:
+        test_email = None
 
     try:
         classified, report_date = validate_upload_set([item.filename or "" for item in files])
@@ -153,13 +193,14 @@ async def create_run(
     state = RunState(
         id=run_id,
         report_date=report_date.strftime("%d-%m-%Y"),
-        send_email=send_email,
+        send_mode=send_mode,
+        test_email=test_email,
         message="อัปโหลดไฟล์ครบแล้ว",
     )
     with RUN_LOCK:
         RUNS[run_id] = state
 
-    background_tasks.add_task(run_pipeline, run_id, input_paths, report_date, send_email)
+    background_tasks.add_task(run_pipeline, run_id, input_paths, report_date, send_mode, test_email)
     return JSONResponse(asdict(state), status_code=202)
 
 
