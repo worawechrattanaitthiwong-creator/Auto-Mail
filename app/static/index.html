@@ -12,16 +12,38 @@
       <div>
         <p class="eyebrow">REPORT AUTOMATION</p>
         <h1>Auto Mail</h1>
-        <p class="lead">รับไฟล์ 3 รายงาน แยกเป็น 7 + 4 ไฟล์ เปลี่ยนชื่อ TransferOrderDiff และจัดส่งอีเมล 6 ชุดอัตโนมัติ</p>
+        <p class="lead">มี 2 ช่องทางทำงาน: ตรวจ Inbox อัตโนมัติ และแนบไฟล์เองบนหน้าเว็บ ทั้งสองแบบใช้กฎแยกไฟล์และส่งอีเมล 6 ชุดเดียวกัน</p>
       </div>
       <div class="badge" id="configBadge">กำลังตรวจการตั้งค่า…</div>
+    </section>
+
+    <section class="mode-grid" aria-label="ช่องทางการทำงาน">
+      <article class="mode-card">
+        <div class="mode-topline">
+          <span class="mode-number">1</span>
+          <span class="badge" id="autoInboxBadge">กำลังตรวจ Auto Inbox…</span>
+        </div>
+        <h2>Auto Inbox</h2>
+        <p>ระบบตรวจเมลกลางและรอรายงานของวันเดียวกันให้ครบ 3 ชนิดก่อนเริ่มทำงานอัตโนมัติ</p>
+        <div class="mode-detail" id="autoInboxDetail">กำลังอ่านสถานะ…</div>
+      </article>
+
+      <article class="mode-card">
+        <div class="mode-topline">
+          <span class="mode-number">2</span>
+          <span class="badge ok">Manual พร้อมใช้</span>
+        </div>
+        <h2>Manual Upload</h2>
+        <p>ใช้เป็นช่องทางหลักหรือสำรองได้ตลอด แนบ TransferOrder, PurchaseOrder และ TransferOrderDiff แล้วกดทำงานเอง</p>
+        <div class="mode-detail">เหมาะกับวันที่ไฟล์ใหญ่ส่งเข้าเมลไม่ได้ หรือ Auto Inbox มีปัญหา</div>
+      </article>
     </section>
 
     <section class="panel">
       <div class="panel-head">
         <div>
-          <h2>1. แนบไฟล์รายงาน</h2>
-          <p>เลือกพร้อมกัน 3 ไฟล์ ระบบจะจำแนกจากชื่อไฟล์ให้อัตโนมัติ</p>
+          <h2>Manual Upload — แนบไฟล์ 3 รายงาน</h2>
+          <p>เลือกพร้อมกัน 3 ไฟล์ ระบบจะจำแนกจากชื่อไฟล์และตรวจวันที่ให้อัตโนมัติ</p>
         </div>
       </div>
 
@@ -50,13 +72,13 @@
         <button class="secondary" id="testSend" disabled>Test Send 6 Emails</button>
         <button class="primary" id="runSend" disabled>Live Send</button>
       </div>
-      <p class="safety-note">Test Send: ผู้รับจริง/CC จริงจะไม่ถูกส่ง · Live Send: ใช้ To/CC ที่ตั้งค่าไว้จริง</p>
+      <p class="safety-note">Test Send: ไม่ส่ง To/CC จริง · Live Send: ใช้ To/CC ที่ตั้งค่าไว้จริง</p>
     </section>
 
     <section class="panel progress-panel" id="progressPanel" hidden>
       <div class="progress-title">
         <div>
-          <h2>2. สถานะการทำงาน</h2>
+          <h2>สถานะการทำงาน</h2>
           <p id="statusText">กำลังเริ่มงาน…</p>
         </div>
         <strong id="progressValue">0%</strong>
