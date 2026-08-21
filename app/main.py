@@ -15,7 +15,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .inbox import GmailInboxWatcher, InboxError, InboxSettings, ReadyBatch
-from .mailer import MailError, load_email_jobs, send_configured_emails
+from .mailer import load_email_jobs, send_configured_emails
+from .output_bundle import OutputBundleError, extract_output_zip, map_output_files
 from .processor import ProcessingError, process_all, validate_upload_set
 from .settings_store import SettingsError, apply_email_settings, load_email_settings, save_email_settings
 
@@ -30,7 +31,7 @@ CONFIG_PATH = BASE_DIR / "config" / "email_jobs.json"
 STATIC_DIR = BASE_DIR / "app" / "static"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-app = FastAPI(title="Auto Mail", version="0.5.0")
+app = FastAPI(title="Auto Mail", version="0.6.0")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -69,6 +70,8 @@ def _enabled(name: str, default: str = "false") -> bool:
 
 
 def require_access_key(x_app_key: str | None) -> None:
+    if not _enabled("ACCESS_CONTROL_ENABLED", "false"):
+        return
     expected = os.getenv("APP_ACCESS_KEY", "").strip()
     if expected and x_app_key != expected:
         raise HTTPException(status_code=401, detail="Access key ไม่ถูกต้อง")
@@ -114,6 +117,14 @@ def _email_config() -> dict[str, Any]:
         "jobs_with_recipients": jobs_with_recipients,
         "live_ready": live_ready,
     }
+
+
+def _resolve_test_email(test_email: str | None) -> str:
+    saved_test_email = str(_runtime_settings().get("test_email", "")).strip()
+    candidate = (test_email or saved_test_email).strip()
+    if "@" not in candidate or "." not in candidate.rsplit("@", 1)[-1]:
+        raise HTTPException(status_code=400, detail="กรุณาบันทึก Test Email ให้ถูกต้องก่อนทดสอบส่ง")
+    return candidate
 
 
 def run_pipeline(
@@ -173,6 +184,46 @@ def run_pipeline(
         )
     except Exception as exc:
         update_run(run_id, status="failed", error=str(exc), message="งานไม่สำเร็จ")
+
+
+def send_existing_outputs(
+    run_id: str,
+    outputs: dict[str, Path],
+    report_date: date,
+    send_mode: str,
+    test_email: str | None,
+) -> None:
+    def progress(percent: int, message: str) -> None:
+        update_run(run_id, progress=percent, message=message, status="sending")
+
+    try:
+        update_run(
+            run_id,
+            status="sending",
+            progress=1,
+            error=None,
+            emails=[],
+            send_mode=send_mode,
+            test_email=test_email,
+            message="กำลังทดสอบส่งผลลัพธ์เดิม" if send_mode == "test" else "กำลังส่งผลลัพธ์เดิม",
+        )
+        emails = send_configured_emails(
+            outputs,
+            report_date,
+            CONFIG_PATH,
+            progress,
+            mode=send_mode,
+            test_recipient=test_email,
+            jobs_override=_configured_jobs(),
+        )
+        final_message = (
+            f"ทดสอบส่งผลลัพธ์เดิม {len(emails)} อีเมลไปที่ {test_email} เรียบร้อย"
+            if send_mode == "test"
+            else f"ส่งผลลัพธ์เดิมจริง {len(emails)} ฉบับเรียบร้อย"
+        )
+        update_run(run_id, status="completed", progress=100, message=final_message, emails=emails)
+    except Exception as exc:
+        update_run(run_id, status="failed", error=str(exc), message="ส่งอีเมลไม่สำเร็จ")
 
 
 def _launch_inbox_batch(watcher: GmailInboxWatcher, batch: ReadyBatch) -> str:
@@ -287,6 +338,7 @@ def config_status(_: None = Header(default=None, alias="X-Ignored")) -> dict[str
         and os.getenv("INBOX_PASSWORD", os.getenv("SMTP_PASSWORD", ""))
     )
     settings = _runtime_settings()
+    access_control_enabled = _enabled("ACCESS_CONTROL_ENABLED", "false")
     return {
         "email_send_enabled": mail_config["email_send_enabled"],
         "smtp_configured": mail_config["smtp_configured"],
@@ -302,7 +354,7 @@ def config_status(_: None = Header(default=None, alias="X-Ignored")) -> dict[str
         "inbox_watch_enabled": inbox_enabled,
         "inbox_configured": inbox_configured,
         "inbox_status": dict(INBOX_STATUS),
-        "access_key_required": bool(os.getenv("APP_ACCESS_KEY", "").strip()),
+        "access_key_required": access_control_enabled and bool(os.getenv("APP_ACCESS_KEY", "").strip()),
     }
 
 
@@ -341,11 +393,7 @@ async def create_run(
     if send_mode not in {"none", "test", "live"}:
         raise HTTPException(status_code=400, detail="send_mode ต้องเป็น none, test หรือ live")
     if send_mode == "test":
-        saved_test_email = str(_runtime_settings().get("test_email", "")).strip()
-        candidate = (test_email or saved_test_email).strip()
-        if "@" not in candidate or "." not in candidate.rsplit("@", 1)[-1]:
-            raise HTTPException(status_code=400, detail="กรุณาบันทึก Test Email ให้ถูกต้องก่อนทดสอบส่ง")
-        test_email = candidate
+        test_email = _resolve_test_email(test_email)
     else:
         test_email = None
 
@@ -368,7 +416,7 @@ async def create_run(
     for kind, upload in upload_by_kind.items():
         target = input_dir / Path(upload.filename or f"{kind}.xlsx").name
         with target.open("wb") as handle:
-            while chunk := await upload.read(1024 * 1024):
+            while chunk := await upload.read(4 * 1024 * 1024):
                 handle.write(chunk)
         await upload.close()
         input_paths[kind] = target
@@ -386,6 +434,83 @@ async def create_run(
 
     background_tasks.add_task(run_pipeline, run_id, input_paths, report_date, send_mode, test_email)
     return JSONResponse(asdict(state), status_code=202)
+
+
+@app.post("/api/output-bundles")
+async def upload_output_bundle(
+    bundle: UploadFile = File(...),
+    x_app_key: str | None = Header(default=None),
+) -> JSONResponse:
+    require_access_key(x_app_key)
+    filename = Path(bundle.filename or "outputs.zip").name
+    if not filename.lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="กรุณาเลือกไฟล์ ZIP ที่ดาวน์โหลดจาก Auto-Mail")
+
+    run_id = "bundle-" + uuid.uuid4().hex[:10]
+    run_dir = DATA_DIR / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    zip_path = run_dir / "outputs.zip"
+    try:
+        with zip_path.open("wb") as handle:
+            while chunk := await bundle.read(4 * 1024 * 1024):
+                handle.write(chunk)
+        await bundle.close()
+        outputs, report_date = extract_output_zip(zip_path, run_dir / "outputs")
+    except OutputBundleError as exc:
+        shutil.rmtree(run_dir, ignore_errors=True)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        try:
+            zip_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    state = RunState(
+        id=run_id,
+        status="completed",
+        progress=100,
+        report_date=report_date.strftime("%d-%m-%Y"),
+        outputs=sorted(path.name for path in outputs.values()),
+        message="โหลด ZIP ผลลัพธ์ 12 ไฟล์เรียบร้อย พร้อม Test Send / Live Send",
+        source="output_zip",
+    )
+    with RUN_LOCK:
+        RUNS[run_id] = state
+    return JSONResponse(asdict(state), status_code=201)
+
+
+@app.post("/api/runs/{run_id}/send")
+def send_existing_run(
+    run_id: str,
+    background_tasks: BackgroundTasks,
+    send_mode: str = Form(...),
+    test_email: str | None = Form(None),
+    x_app_key: str | None = Header(default=None),
+) -> JSONResponse:
+    require_access_key(x_app_key)
+    if send_mode not in {"test", "live"}:
+        raise HTTPException(status_code=400, detail="ส่งผลลัพธ์เดิมได้เฉพาะ test หรือ live")
+    if send_mode == "test":
+        test_email = _resolve_test_email(test_email)
+    else:
+        test_email = None
+
+    with RUN_LOCK:
+        state = RUNS.get(run_id)
+        if not state:
+            raise HTTPException(status_code=404, detail="ไม่พบผลลัพธ์ชุดนี้ อาจเกิดจากเว็บถูก restart")
+
+    output_dir = DATA_DIR / run_id / "outputs"
+    if not output_dir.exists():
+        raise HTTPException(status_code=404, detail="ไฟล์ผลลัพธ์ชุดนี้ไม่อยู่บนเซิร์ฟเวอร์แล้ว กรุณาใช้ ZIP ที่ดาวน์โหลดไว้")
+    try:
+        outputs, report_date = map_output_files(sorted(output_dir.glob("*.xlsx")))
+    except OutputBundleError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    update_run(run_id, send_mode=send_mode, test_email=test_email, error=None, emails=[])
+    background_tasks.add_task(send_existing_outputs, run_id, outputs, report_date, send_mode, test_email)
+    return JSONResponse(asdict(RUNS[run_id]), status_code=202)
 
 
 @app.get("/api/runs/{run_id}")
@@ -407,7 +532,7 @@ def download_outputs(run_id: str, x_app_key: str | None = Header(default=None)) 
         raise HTTPException(status_code=404, detail="ยังไม่มีไฟล์ผลลัพธ์")
 
     zip_path = run_dir / f"Auto-Mail-{run_id}.zip"
-    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=1) as archive:
         for path in sorted(output_dir.glob("*.xlsx")):
             archive.write(path, arcname=path.name)
     return FileResponse(zip_path, filename=zip_path.name, media_type="application/zip")
