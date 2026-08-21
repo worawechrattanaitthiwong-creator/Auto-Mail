@@ -88,11 +88,15 @@ async function loadConfig() {
   config = await response.json();
   accessRow.hidden = !config.access_key_required;
 
+  const driveText = config.drive_fallback_enabled && config.drive_configured
+    ? ' · Drive fallback พร้อม'
+    : ` · แนบตรง ≤ ${config.direct_attachment_max_mb || 20} MB`;
+
   if (config.live_ready) {
-    configBadge.textContent = `Live พร้อมส่ง · ${config.jobs_enabled} jobs`;
+    configBadge.textContent = `Live พร้อมส่ง · ${config.jobs_enabled} jobs${driveText}`;
     configBadge.className = 'badge ok';
   } else if (config.test_ready) {
-    configBadge.textContent = `Test พร้อม · Live รอ To/CC (${config.jobs_with_recipients}/${config.jobs_enabled})`;
+    configBadge.textContent = `Test พร้อม · Live รอ To/CC (${config.jobs_with_recipients}/${config.jobs_enabled})${driveText}`;
     configBadge.className = 'badge warn';
   } else {
     configBadge.textContent = 'Email ยังไม่พร้อม · ตั้งค่า SMTP ก่อน';
@@ -129,6 +133,12 @@ async function startRun(sendMode) {
   }
 }
 
+function deliveryLabel(value) {
+  if (value === 'hybrid') return 'แนบ + Drive link';
+  if (value === 'drive_link') return 'Drive link';
+  return 'ไฟล์แนบ';
+}
+
 async function poll(runId) {
   try {
     const response = await fetch(`/api/runs/${runId}`, { headers: headers() });
@@ -143,8 +153,18 @@ async function poll(runId) {
       let sendSummary = '';
       if (state.send_mode === 'test') sendSummary = ` · ทดสอบส่ง ${state.emails.length} ฉบับไปที่ ${escapeHtml(state.test_email || '')}`;
       if (state.send_mode === 'live') sendSummary = ` · ส่งจริง ${state.emails.length} ฉบับ`;
+
+      const emailRows = (state.emails || []).map(email => {
+        const driveNames = (email.drive_links || []).map(item => item.name).join(', ');
+        const extra = driveNames ? ` · Link: ${escapeHtml(driveNames)}` : '';
+        return `<li>${escapeHtml(email.name || email.id)} — ${deliveryLabel(email.delivery)}${extra}</li>`;
+      }).join('');
+      const emailBlock = emailRows ? `<h3>รูปแบบการส่ง</h3><ul>${emailRows}</ul>` : '';
+
       result.className = 'result success';
       result.innerHTML = `<strong>สำเร็จ</strong> · ได้ไฟล์ ${state.outputs.length} ไฟล์${sendSummary}
+        ${emailBlock}
+        <h3>Output files</h3>
         <ul class="output-list">${items}</ul>
         <a href="/api/runs/${runId}/download" data-download="${runId}">ดาวน์โหลดไฟล์ทั้งหมด (.zip)</a>`;
       const link = result.querySelector('a');
