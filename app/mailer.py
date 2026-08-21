@@ -80,7 +80,7 @@ def plan_delivery(
     outputs: dict[str, Path],
     direct_attachment_max_mb: float,
 ) -> tuple[list[str], list[str]]:
-    """Use either all direct attachments or all Drive links for one email."""
+    """Use either all direct attachments or all link delivery for one email."""
     attachment_keys = list(attachment_keys)
     paths = [outputs[key] for key in attachment_keys]
     if _estimated_encoded_mb(paths) <= direct_attachment_max_mb:
@@ -90,6 +90,10 @@ def plan_delivery(
 
 def _drive_fallback_enabled() -> bool:
     return os.getenv("DRIVE_FALLBACK_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
+
+
+def _live_send_enabled() -> bool:
+    return os.getenv("EMAIL_SEND_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
 
 
 def send_configured_emails(
@@ -102,11 +106,14 @@ def send_configured_emails(
     test_recipient: str | None = None,
     jobs_override: list[dict] | None = None,
 ) -> list[dict]:
-    if os.getenv("EMAIL_SEND_ENABLED", "false").lower() not in {"1", "true", "yes", "on"}:
-        raise MailError("EMAIL_SEND_ENABLED=false จึงยังไม่อนุญาตให้ส่งอีเมล")
-
     if mode not in {"live", "test"}:
         raise MailError("โหมดส่งอีเมลไม่ถูกต้อง")
+
+    # Test Send is deliberately independent from the Live Send safety switch.
+    # EMAIL_SEND_ENABLED protects only real recipients.
+    if mode == "live" and not _live_send_enabled():
+        raise MailError("Live Send ยังปิดอยู่ (EMAIL_SEND_ENABLED=false)")
+
     if mode == "test":
         test_recipient = (test_recipient or "").strip()
         if not _looks_like_email(test_recipient):
@@ -120,7 +127,7 @@ def send_configured_emails(
 
     direct_attachment_max_mb = float(os.getenv("DIRECT_ATTACHMENT_MAX_MB", "20"))
     plans: dict[str, tuple[list[str], list[str]]] = {}
-    needs_drive = False
+    needs_link_delivery = False
 
     for job in jobs:
         if mode == "live" and not job.get("to"):
@@ -133,20 +140,26 @@ def send_configured_emails(
 
         direct_keys, link_keys = plan_delivery(attachment_keys, outputs, direct_attachment_max_mb)
         plans[str(job.get("id"))] = (direct_keys, link_keys)
-        needs_drive = needs_drive or bool(link_keys)
-
-    if needs_drive and not _drive_fallback_enabled():
-        raise MailError(
-            "มีอีเมลที่ไฟล์แนบรวมใหญ่เกิน DIRECT_ATTACHMENT_MAX_MB แต่ DRIVE_FALLBACK_ENABLED=false"
-        )
+        needs_link_delivery = needs_link_delivery or bool(link_keys)
 
     drive: GoogleDriveUploader | None = None
     drive_cache: dict[str, dict[str, str]] = {}
-    if needs_drive:
+    drive_enabled = _drive_fallback_enabled()
+
+    if needs_link_delivery and drive_enabled:
         try:
             drive = GoogleDriveUploader.from_env()
         except DriveError as exc:
-            raise MailError(str(exc)) from exc
+            # A Test Send should still be able to verify all 6 messages even
+            # while Drive is being configured. Live Send remains strict.
+            if mode == "live":
+                raise MailError(str(exc)) from exc
+            drive = None
+
+    if needs_link_delivery and mode == "live" and drive is None:
+        raise MailError(
+            "มีอีเมลที่ไฟล์แนบรวมใหญ่เกิน DIRECT_ATTACHMENT_MAX_MB แต่ Google Drive fallback ยังไม่พร้อม"
+        )
 
     context = {
         "date": report_date.strftime("%d-%m-%Y"),
@@ -175,16 +188,20 @@ def send_configured_emails(
             actual_cc: list[str] = [] if mode == "test" else intended_cc
 
             drive_links: list[dict[str, str]] = []
-            if link_keys:
-                if drive is None:
-                    raise MailError("Google Drive fallback ยังไม่พร้อมใช้งาน")
+            if link_keys and drive is not None:
                 for key in link_keys:
                     cache_key = str(outputs[key].resolve())
                     if cache_key not in drive_cache:
                         try:
                             drive_cache[cache_key] = drive.upload(outputs[key])
                         except DriveError as exc:
-                            raise MailError(str(exc)) from exc
+                            if mode == "live":
+                                raise MailError(str(exc)) from exc
+                            # In Test mode, fall back to a no-attachment test for
+                            # this oversized email rather than stopping all 6.
+                            drive = None
+                            drive_links = []
+                            break
                     drive_links.append(drive_cache[cache_key])
 
             message = EmailMessage()
@@ -206,6 +223,16 @@ def send_configured_emails(
                     *[f"- {item['name']}: {item['url']}" for item in drive_links],
                 ]
                 body += "\n" + "\n".join(lines)
+            elif link_keys and mode == "test":
+                oversized_names = [outputs[key].name for key in link_keys]
+                lines = [
+                    "",
+                    "[TEST ONLY] ไฟล์ชุดนี้ใหญ่เกินขนาดแนบตรงของ Gmail",
+                    "รอบทดสอบนี้จึงส่งอีเมลโดยไม่แนบไฟล์ เพื่อให้ตรวจ Subject / Body / ผู้รับได้ก่อน:",
+                    *[f"- {name}" for name in oversized_names],
+                    "Live Send จะยังไม่ส่งชุดนี้จนกว่าจะมีระบบลิงก์สำหรับไฟล์ใหญ่พร้อมใช้งาน",
+                ]
+                body += "\n" + "\n".join(lines)
             message.set_content(body)
 
             for key in direct_keys:
@@ -213,7 +240,13 @@ def send_configured_emails(
 
             smtp.send_message(message)
 
-            delivery = "drive_link" if link_keys else "attachment"
+            if drive_links:
+                delivery = "drive_link"
+            elif link_keys and mode == "test":
+                delivery = "test_no_attachment"
+            else:
+                delivery = "attachment"
+
             result = {
                 "id": job.get("id"),
                 "name": job.get("name", job.get("id")),
@@ -233,7 +266,12 @@ def send_configured_emails(
             if progress:
                 pct = 87 + int(index / max(len(jobs), 1) * 13)
                 label = "ทดสอบส่ง" if mode == "test" else "ส่งอีเมล"
-                suffix = " (Drive link ทั้งชุด)" if link_keys else " (แนบไฟล์ทั้งหมด)"
+                if delivery == "drive_link":
+                    suffix = " (Drive link ทั้งชุด)"
+                elif delivery == "test_no_attachment":
+                    suffix = " (TEST: ไฟล์ใหญ่ จึงไม่แนบไฟล์ชุดนี้)"
+                else:
+                    suffix = " (แนบไฟล์ทั้งหมด)"
                 progress(min(pct, 100), f"{label} {index}/{len(jobs)} สำเร็จ{suffix}")
 
     return results
