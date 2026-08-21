@@ -41,7 +41,7 @@ def classify_output_filename(filename: str) -> tuple[str, date]:
 
     match = DATE_RE.search(name)
     if not match:
-        raise OutputBundleError(f"หา日期ในชื่อไฟล์ไม่พบ: {name}")
+        raise OutputBundleError(f"หาวันที่ในชื่อไฟล์ไม่พบ: {name}")
     try:
         report_date = datetime.strptime(match.group(1), "%d-%m-%Y").date()
     except ValueError as exc:
