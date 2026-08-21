@@ -11,6 +11,8 @@ const progressValue = document.querySelector('#progressValue');
 const progressBar = document.querySelector('#progressBar');
 const result = document.querySelector('#result');
 const configBadge = document.querySelector('#configBadge');
+const autoInboxBadge = document.querySelector('#autoInboxBadge');
+const autoInboxDetail = document.querySelector('#autoInboxDetail');
 const accessRow = document.querySelector('#accessRow');
 const accessKey = document.querySelector('#accessKey');
 
@@ -83,10 +85,51 @@ function headers() {
   return h;
 }
 
+function renderInboxStatus() {
+  if (!autoInboxBadge || !autoInboxDetail || !config) return;
+  const inbox = config.inbox_status || {};
+
+  if (!config.inbox_watch_enabled) {
+    autoInboxBadge.textContent = 'ยังไม่เปิด Auto';
+    autoInboxBadge.className = 'badge warn';
+    autoInboxDetail.textContent = 'Manual Upload ยังใช้ได้ตามปกติ ระหว่างที่ Auto Inbox ยังไม่เปิดใช้งาน';
+    return;
+  }
+
+  if (!config.inbox_configured || inbox.status === 'error') {
+    autoInboxBadge.textContent = 'Auto ต้องตั้งค่าเพิ่ม';
+    autoInboxBadge.className = 'badge warn';
+    autoInboxDetail.textContent = inbox.last_error || 'ยังตั้งค่า Inbox username/password ไม่ครบ';
+    return;
+  }
+
+  if (inbox.status === 'waiting_email_config') {
+    autoInboxBadge.textContent = 'Inbox พร้อม · รอ Live';
+    autoInboxBadge.className = 'badge warn';
+    autoInboxDetail.textContent = 'ระบบอ่าน Inbox ได้แล้ว แต่ยังรอ To/CC และการตั้งค่าส่งเมลจริงให้ครบ';
+    return;
+  }
+
+  if (inbox.status === 'processing') {
+    autoInboxBadge.textContent = 'กำลังประมวลผล';
+    autoInboxBadge.className = 'badge ok';
+    const batch = inbox.last_batch || {};
+    autoInboxDetail.textContent = batch.report_date ? `กำลังทำรายงานวันที่ ${batch.report_date}` : 'พบรายงานครบ 3 ไฟล์และเริ่มทำงานแล้ว';
+    return;
+  }
+
+  autoInboxBadge.textContent = 'Auto Inbox พร้อม';
+  autoInboxBadge.className = 'badge ok';
+  autoInboxDetail.textContent = inbox.last_scan
+    ? `ตรวจ Inbox ล่าสุด ${inbox.last_scan}`
+    : 'ระบบจะตรวจ Inbox และรอ TransferOrder / PurchaseOrder / TransferOrderDiff ให้ครบวันเดียวกัน';
+}
+
 async function loadConfig() {
   const response = await fetch('/api/config-status');
   config = await response.json();
   accessRow.hidden = !config.access_key_required;
+  renderInboxStatus();
 
   const driveText = config.drive_fallback_enabled && config.drive_configured
     ? ' · Drive fallback พร้อม'
@@ -134,7 +177,6 @@ async function startRun(sendMode) {
 }
 
 function deliveryLabel(value) {
-  if (value === 'hybrid') return 'แนบ + Drive link';
   if (value === 'drive_link') return 'Drive link';
   return 'ไฟล์แนบ';
 }
@@ -178,11 +220,13 @@ async function poll(runId) {
         }
       });
       renderFiles();
+      loadConfig();
       return;
     }
     if (state.status === 'failed') {
       showError(state.error || 'งานไม่สำเร็จ');
       renderFiles();
+      loadConfig();
       return;
     }
     setTimeout(() => poll(runId), 1500);
