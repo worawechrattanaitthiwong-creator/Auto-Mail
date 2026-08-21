@@ -114,6 +114,27 @@ SMTP_USE_TLS=true
 SMTP_USE_SSL=false
 ```
 
+## Gmail Inbox watcher
+
+ระบบมี watcher สำหรับเมลกลางแล้ว โดยตรวจ attachment จากชื่อไฟล์ `TransferOrder`, `PurchaseOrder`, `TransferOrderDiff` และจัดกลุ่มตามวันที่ในชื่อไฟล์ เมื่อครบทั้ง 3 ชนิดของวันเดียวกัน ระบบจะสร้าง run ใหม่และส่ง 6 เมลแบบ Live อัตโนมัติ.
+
+```env
+INBOX_WATCH_ENABLED=true
+INBOX_HOST=imap.gmail.com
+INBOX_PORT=993
+INBOX_USERNAME=your-central-mail@gmail.com
+INBOX_PASSWORD=your-google-app-password
+INBOX_FOLDER=INBOX
+INBOX_POLL_SECONDS=60
+INBOX_SCAN_LIMIT=200
+INBOX_MAX_REPORT_AGE_DAYS=3
+INBOX_ALLOWED_SENDERS=your-company-email@example.com
+```
+
+เพื่อความปลอดภัย ควรใส่ `INBOX_ALLOWED_SENDERS` เป็นอีเมลบริษัทที่ใช้ส่งรายงานจริง ระบบใช้ `BODY.PEEK[]` จึงไม่จำเป็นต้อง mark เมลเป็น read และมี state file ป้องกันการหยิบ batch เดิมมาส่งซ้ำหลัง restart.
+
+Watcher จะยังไม่เริ่ม Auto Send จนกว่า `EMAIL_SEND_ENABLED=true`, SMTP พร้อม และ email job ที่เปิดใช้ทุกชุดมีผู้รับ `To` ครบ. ควรรัน production ด้วย **1 application worker** เพื่อไม่ให้มี watcher หลายตัวใน instance เดียวกัน.
+
 ## Run locally
 
 ```bash
@@ -131,10 +152,6 @@ uvicorn app.main:app --reload
 docker build -t auto-mail .
 docker run --env-file .env -p 8000:8000 auto-mail
 ```
-
-## Planned next step
-
-เพิ่ม central Gmail inbox watcher: ตรวจเมล Transfer Order / Purchase Order / Transfer Order Diff, รอครบ 3 รายงานของวันเดียวกัน, ดาวน์โหลด attachment, ประมวลผล 12 ไฟล์ และส่ง 6 เมลรอบ 19.00 อัตโนมัติ โดยยังเก็บ manual upload เป็น fallback.
 
 ## Tests
 
