@@ -20,7 +20,8 @@ from .processor import ProcessingError, process_all, validate_upload_set
 from .settings_store import SettingsError, apply_email_settings, load_email_settings, save_email_settings
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_ROOT = Path(os.getenv("AUTO_MAIL_DATA_DIR", str(BASE_DIR / "data"))).expanduser().resolve()
+_data_root_env = os.getenv("AUTO_MAIL_DATA_DIR", "").strip()
+DATA_ROOT = Path(_data_root_env).expanduser().resolve() if _data_root_env else BASE_DIR / "data"
 DATA_DIR = DATA_ROOT / "runs"
 INBOX_DIR = DATA_ROOT / "inbox"
 INBOX_STATE_PATH = DATA_ROOT / "mailbox_state.json"
@@ -170,7 +171,7 @@ def run_pipeline(
             message=final_message,
             emails=emails,
         )
-    except (ProcessingError, MailError, SettingsError, Exception) as exc:
+    except Exception as exc:
         update_run(run_id, status="failed", error=str(exc), message="งานไม่สำเร็จ")
 
 
