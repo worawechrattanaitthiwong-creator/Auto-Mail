@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,7 @@ class SettingsError(RuntimeError):
 
 
 _EMAIL_SPLIT = re.compile(r"[;,\n\r]+")
+_DB_SETTING_KEY = "email_settings"
 
 
 def looks_like_email(value: str) -> bool:
@@ -43,6 +45,10 @@ def normalize_addresses(value: Any) -> list[str]:
     return result
 
 
+def settings_storage_backend() -> str:
+    return "postgres" if os.getenv("DATABASE_URL", "").strip() else "file"
+
+
 def _load_templates(config_path: Path) -> list[dict[str, Any]]:
     try:
         data = json.loads(config_path.read_text(encoding="utf-8"))
@@ -53,7 +59,85 @@ def _load_templates(config_path: Path) -> list[dict[str, Any]]:
     return data
 
 
-def _load_stored(settings_path: Path) -> dict[str, Any]:
+def _connect_database():
+    database_url = os.getenv("DATABASE_URL", "").strip()
+    if not database_url:
+        return None
+    try:
+        import psycopg
+
+        return psycopg.connect(database_url, connect_timeout=10)
+    except Exception as exc:
+        raise SettingsError("เชื่อมฐานข้อมูลสำหรับ Email Settings ไม่สำเร็จ") from exc
+
+
+def _ensure_table(connection) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS auto_mail_settings (
+                setting_key TEXT PRIMARY KEY,
+                payload JSONB NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """
+        )
+    connection.commit()
+
+
+def _load_stored_database() -> dict[str, Any]:
+    connection = _connect_database()
+    if connection is None:
+        return {}
+    try:
+        _ensure_table(connection)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT payload FROM auto_mail_settings WHERE setting_key = %s",
+                (_DB_SETTING_KEY,),
+            )
+            row = cursor.fetchone()
+        if not row:
+            return {}
+        data = row[0]
+        if isinstance(data, str):
+            data = json.loads(data)
+        return data if isinstance(data, dict) else {}
+    except SettingsError:
+        raise
+    except Exception as exc:
+        raise SettingsError("อ่าน Email Settings จากฐานข้อมูลไม่สำเร็จ") from exc
+    finally:
+        connection.close()
+
+
+def _save_stored_database(data: dict[str, Any]) -> None:
+    connection = _connect_database()
+    if connection is None:
+        raise SettingsError("ยังไม่ได้ตั้งค่า DATABASE_URL")
+    try:
+        _ensure_table(connection)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO auto_mail_settings (setting_key, payload, updated_at)
+                VALUES (%s, %s::jsonb, NOW())
+                ON CONFLICT (setting_key)
+                DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()
+                """,
+                (_DB_SETTING_KEY, json.dumps(data, ensure_ascii=False)),
+            )
+        connection.commit()
+    except SettingsError:
+        raise
+    except Exception as exc:
+        connection.rollback()
+        raise SettingsError("บันทึก Email Settings ลงฐานข้อมูลไม่สำเร็จ") from exc
+    finally:
+        connection.close()
+
+
+def _load_stored_file(settings_path: Path) -> dict[str, Any]:
     if not settings_path.exists():
         return {}
     try:
@@ -61,6 +145,26 @@ def _load_stored(settings_path: Path) -> dict[str, Any]:
     except Exception as exc:
         raise SettingsError("อ่าน email settings ที่บันทึกไว้ไม่สำเร็จ") from exc
     return data if isinstance(data, dict) else {}
+
+
+def _save_stored_file(settings_path: Path, data: dict[str, Any]) -> None:
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = settings_path.with_suffix(settings_path.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(settings_path)
+
+
+def _load_stored(settings_path: Path) -> dict[str, Any]:
+    if settings_storage_backend() == "postgres":
+        return _load_stored_database()
+    return _load_stored_file(settings_path)
+
+
+def _save_stored(settings_path: Path, data: dict[str, Any]) -> None:
+    if settings_storage_backend() == "postgres":
+        _save_stored_database(data)
+    else:
+        _save_stored_file(settings_path, data)
 
 
 def load_email_settings(
@@ -145,9 +249,5 @@ def save_email_settings(
         }
 
     data = {"test_email": test_email, "jobs": stored_jobs}
-    settings_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = settings_path.with_suffix(settings_path.suffix + ".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(settings_path)
-
+    _save_stored(settings_path, data)
     return load_email_settings(settings_path, config_path)
