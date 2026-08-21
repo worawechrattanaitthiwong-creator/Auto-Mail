@@ -24,6 +24,33 @@ let selectedFiles = [];
 let config = null;
 let settingsLoaded = false;
 let settingsDirty = false;
+const ACCESS_KEY_SESSION_KEY = 'auto-mail-access-key';
+
+function restoreAccessKey() {
+  try {
+    accessKey.value = window.sessionStorage.getItem(ACCESS_KEY_SESSION_KEY) || '';
+  } catch (_) {
+    accessKey.value = '';
+  }
+}
+
+function rememberAccessKey() {
+  try {
+    const value = accessKey.value.trim();
+    if (value) window.sessionStorage.setItem(ACCESS_KEY_SESSION_KEY, value);
+    else window.sessionStorage.removeItem(ACCESS_KEY_SESSION_KEY);
+  } catch (_) {
+    // If browser storage is blocked, the app still works; the key just won't survive refresh.
+  }
+}
+
+function forgetAccessKey() {
+  try {
+    window.sessionStorage.removeItem(ACCESS_KEY_SESSION_KEY);
+  } catch (_) {
+    // Ignore storage errors.
+  }
+}
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>\"']/g, char => ({
@@ -185,6 +212,10 @@ async function loadEmailSettings() {
   try {
     const response = await fetch('/api/email-settings', { headers: headers() });
     const payload = await response.json();
+    if (response.status === 401) {
+      forgetAccessKey();
+      accessKey.value = '';
+    }
     if (!response.ok) throw new Error(payload.detail || 'โหลด Email Settings ไม่สำเร็จ');
     renderEmailSettings(payload);
     settingsLoaded = true;
@@ -377,7 +408,10 @@ function showError(message) {
   result.textContent = message;
 }
 
-accessKey.addEventListener('change', loadEmailSettings);
+accessKey.addEventListener('change', () => {
+  rememberAccessKey();
+  loadEmailSettings();
+});
 accessKey.addEventListener('keydown', event => {
   if (event.key === 'Enter') {
     event.preventDefault();
@@ -390,4 +424,5 @@ runSend.addEventListener('click', () => {
 });
 testSend.addEventListener('click', () => startRun('test'));
 processOnly.addEventListener('click', () => startRun('none'));
+restoreAccessKey();
 loadConfig();
