@@ -110,7 +110,7 @@ def send_configured_emails(
     context = {
         "date": report_date.strftime("%d-%m-%Y"),
         "date_slash": report_date.strftime("%d/%m/%Y"),
-        "time": "09.00",
+        "time": "19.00",
     }
     results: list[dict] = []
     ssl_context = ssl.create_default_context()
