@@ -72,7 +72,6 @@ def _looks_like_email(value: str) -> bool:
 
 def _estimated_encoded_mb(paths: list[Path]) -> float:
     raw_bytes = sum(path.stat().st_size for path in paths)
-    # Base64 expands data by roughly 4/3. Add a small allowance for MIME headers/body.
     return (raw_bytes * 4 / 3) / (1024 * 1024) + 0.15
 
 
@@ -101,6 +100,7 @@ def send_configured_emails(
     *,
     mode: str = "live",
     test_recipient: str | None = None,
+    jobs_override: list[dict] | None = None,
 ) -> list[dict]:
     if os.getenv("EMAIL_SEND_ENABLED", "false").lower() not in {"1", "true", "yes", "on"}:
         raise MailError("EMAIL_SEND_ENABLED=false จึงยังไม่อนุญาตให้ส่งอีเมล")
@@ -113,9 +113,10 @@ def send_configured_emails(
             raise MailError("กรุณากรอกอีเมลทดสอบให้ถูกต้อง")
 
     settings = SmtpSettings.from_env()
-    jobs = [job for job in load_email_jobs(config_path) if job.get("enabled", False)]
+    source_jobs = jobs_override if jobs_override is not None else load_email_jobs(config_path)
+    jobs = [job for job in source_jobs if job.get("enabled", False)]
     if not jobs:
-        raise MailError("ยังไม่มี email job ที่ enabled=true ใน config/email_jobs.json")
+        raise MailError("ยังไม่มี email job ที่ enabled=true")
 
     direct_attachment_max_mb = float(os.getenv("DIRECT_ATTACHMENT_MAX_MB", "20"))
     plans: dict[str, tuple[list[str], list[str]]] = {}
