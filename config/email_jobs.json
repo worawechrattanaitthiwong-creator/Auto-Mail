@@ -1,0 +1,56 @@
+[
+  {
+    "id": "deleted_and_diff",
+    "enabled": false,
+    "to": [],
+    "cc": [],
+    "subject": "Transfer Order lines all Store status Deleted / TF Diff {date} Time {time}",
+    "body": "Dear Team,\n\nTransfer Order lines all Store status Deleted / TF Diff\nDate {date} Time {time}\n\nBest regards",
+    "attachments": ["transfer_status_deleted", "transfer_order_diff"]
+  },
+  {
+    "id": "scx_ffm_in_out_and_po",
+    "enabled": false,
+    "to": [],
+    "cc": [],
+    "subject": "Transfer TF SCX_FFM B2C In/Out / Po In {date} Time {time}",
+    "body": "Dear Team,\n\nTransfer TF SCX_FFM B2C In/Out / Po In\nDate {date} Time {time}\n\nBest regards",
+    "attachments": ["purchase_rc_scx_ffm", "transfer_scx_ffm_in", "transfer_scx_ffm_out"]
+  },
+  {
+    "id": "zz_cnn_transfer_and_po",
+    "enabled": false,
+    "to": [],
+    "cc": [],
+    "subject": "Transfer store to ZZ_CNN / PRT. ZZ_CNN all status {date} Time {time}",
+    "body": "Dear Team,\n\nTransfer store to ZZ_CNN / PRT. ZZ_CNN all status\nDate {date} Time {time}\n\nBest regards",
+    "attachments": ["purchase_prt_zz_cnn", "transfer_zz_cnn_in"]
+  },
+  {
+    "id": "purchase_scx_xd",
+    "enabled": false,
+    "to": [],
+    "cc": [],
+    "subject": "Purchase order SCX_XD all status {date} Time {time}",
+    "body": "Dear Team,\n\nPurchase order SCX_XD all status\nDate {date} Time {time}\n\nBest regards",
+    "attachments": ["purchase_rc_scx_xd"]
+  },
+  {
+    "id": "transfer_received",
+    "enabled": false,
+    "to": [],
+    "cc": [],
+    "subject": "Transfer Order lines all Store status Received {date} Time {time}",
+    "body": "Dear Team,\n\nTransfer Order lines all Store status Received\nDate {date} Time {time}\n\nBest regards",
+    "attachments": ["transfer_status_received"]
+  },
+  {
+    "id": "shipped_created_and_scx_wh1",
+    "enabled": false,
+    "to": [],
+    "cc": [],
+    "subject": "Transfer Order lines all Store status Shipped / Created / PO SCX_WH1 all status {date} Time {time}",
+    "body": "Dear Team,\n\nTransfer Order lines all Store status Shipped / Created\nPO SCX_WH1 all status\nDate {date} Time {time}\n\nBest regards",
+    "attachments": ["purchase_rc_scx_wh1", "transfer_status_shipped", "transfer_status_created"]
+  }
+]
