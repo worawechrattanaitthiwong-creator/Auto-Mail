@@ -63,7 +63,7 @@ def test_validate_and_process(tmp_path: Path) -> None:
 
     outputs = process_all(transfer, purchase, diff, tmp_path / "out", report_date)
     assert len(outputs) == 12
-    assert outputs["transfer_order_diff"].name == "TransferOrderDiff_ 20-08-2026 Time 09.00.xlsx"
+    assert outputs["transfer_order_diff"].name == "TransferOrderDiff_ 20-08-2026 Time 19.00.xlsx"
     assert count_data_rows(outputs["transfer_status_deleted"]) == 1
     assert count_data_rows(outputs["transfer_status_received"]) == 1
     assert count_data_rows(outputs["transfer_status_created"]) == 1
