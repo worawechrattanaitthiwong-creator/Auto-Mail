@@ -22,7 +22,7 @@ CONFIG_PATH = BASE_DIR / "config" / "email_jobs.json"
 STATIC_DIR = BASE_DIR / "app" / "static"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-app = FastAPI(title="Auto Mail", version="0.2.0")
+app = FastAPI(title="Auto Mail", version="0.3.0")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -133,6 +133,11 @@ def config_status(_: None = Header(default=None, alias="X-Ignored")) -> dict[str
     email_send_enabled = os.getenv("EMAIL_SEND_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
     smtp_configured = all(os.getenv(key) for key in ("SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD", "SMTP_FROM"))
     jobs_with_recipients = sum(1 for job in enabled if job.get("to"))
+    drive_fallback_enabled = os.getenv("DRIVE_FALLBACK_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
+    drive_configured = all(
+        os.getenv(key)
+        for key in ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN")
+    )
     return {
         "email_send_enabled": email_send_enabled,
         "smtp_configured": smtp_configured,
@@ -141,6 +146,9 @@ def config_status(_: None = Header(default=None, alias="X-Ignored")) -> dict[str
         "jobs_with_recipients": jobs_with_recipients,
         "test_ready": email_send_enabled and smtp_configured and bool(enabled),
         "live_ready": email_send_enabled and smtp_configured and bool(enabled) and jobs_with_recipients == len(enabled),
+        "drive_fallback_enabled": drive_fallback_enabled,
+        "drive_configured": drive_configured,
+        "direct_attachment_max_mb": float(os.getenv("DIRECT_ATTACHMENT_MAX_MB", "20")),
         "access_key_required": bool(os.getenv("APP_ACCESS_KEY", "").strip()),
     }
 
