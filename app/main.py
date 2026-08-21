@@ -10,24 +10,26 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import BackgroundTasks, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import BackgroundTasks, Body, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .inbox import GmailInboxWatcher, InboxError, InboxSettings, ReadyBatch
 from .mailer import MailError, load_email_jobs, send_configured_emails
 from .processor import ProcessingError, process_all, validate_upload_set
+from .settings_store import SettingsError, apply_email_settings, load_email_settings, save_email_settings
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_ROOT = BASE_DIR / "data"
+DATA_ROOT = Path(os.getenv("AUTO_MAIL_DATA_DIR", str(BASE_DIR / "data"))).expanduser().resolve()
 DATA_DIR = DATA_ROOT / "runs"
 INBOX_DIR = DATA_ROOT / "inbox"
 INBOX_STATE_PATH = DATA_ROOT / "mailbox_state.json"
+EMAIL_SETTINGS_PATH = DATA_ROOT / "email_settings.json"
 CONFIG_PATH = BASE_DIR / "config" / "email_jobs.json"
 STATIC_DIR = BASE_DIR / "app" / "static"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-app = FastAPI(title="Auto Mail", version="0.4.1")
+app = FastAPI(title="Auto Mail", version="0.5.0")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -78,8 +80,21 @@ def update_run(run_id: str, **changes: Any) -> None:
             setattr(state, key, value)
 
 
+def _runtime_settings() -> dict[str, Any]:
+    return load_email_settings(
+        EMAIL_SETTINGS_PATH,
+        CONFIG_PATH,
+        default_test_email=os.getenv("TEST_EMAIL_DEFAULT", "").strip(),
+    )
+
+
+def _configured_jobs() -> list[dict[str, Any]]:
+    templates = load_email_jobs(CONFIG_PATH)
+    return apply_email_settings(templates, _runtime_settings())
+
+
 def _email_config() -> dict[str, Any]:
-    jobs = load_email_jobs(CONFIG_PATH)
+    jobs = _configured_jobs()
     enabled_jobs = [job for job in jobs if job.get("enabled", False)]
     email_send_enabled = _enabled("EMAIL_SEND_ENABLED")
     smtp_configured = all(os.getenv(key) for key in ("SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD", "SMTP_FROM"))
@@ -138,6 +153,7 @@ def run_pipeline(
                 progress,
                 mode=send_mode,
                 test_recipient=test_email,
+                jobs_override=_configured_jobs(),
             )
 
         if send_mode == "test":
@@ -154,7 +170,7 @@ def run_pipeline(
             message=final_message,
             emails=emails,
         )
-    except (ProcessingError, MailError, Exception) as exc:
+    except (ProcessingError, MailError, SettingsError, Exception) as exc:
         update_run(run_id, status="failed", error=str(exc), message="งานไม่สำเร็จ")
 
 
@@ -269,6 +285,7 @@ def config_status(_: None = Header(default=None, alias="X-Ignored")) -> dict[str
         os.getenv("INBOX_USERNAME", os.getenv("SMTP_USERNAME", "")).strip()
         and os.getenv("INBOX_PASSWORD", os.getenv("SMTP_PASSWORD", ""))
     )
+    settings = _runtime_settings()
     return {
         "email_send_enabled": mail_config["email_send_enabled"],
         "smtp_configured": mail_config["smtp_configured"],
@@ -276,7 +293,7 @@ def config_status(_: None = Header(default=None, alias="X-Ignored")) -> dict[str
         "jobs_enabled": len(enabled_jobs),
         "jobs_with_recipients": mail_config["jobs_with_recipients"],
         "test_ready": mail_config["email_send_enabled"] and mail_config["smtp_configured"] and bool(enabled_jobs),
-        "test_email_default": os.getenv("TEST_EMAIL_DEFAULT", "").strip(),
+        "test_email_saved": bool(settings.get("test_email")),
         "live_ready": mail_config["live_ready"],
         "drive_fallback_enabled": drive_fallback_enabled,
         "drive_configured": drive_configured,
@@ -286,6 +303,27 @@ def config_status(_: None = Header(default=None, alias="X-Ignored")) -> dict[str
         "inbox_status": dict(INBOX_STATUS),
         "access_key_required": bool(os.getenv("APP_ACCESS_KEY", "").strip()),
     }
+
+
+@app.get("/api/email-settings")
+def get_email_settings(x_app_key: str | None = Header(default=None)) -> dict[str, Any]:
+    require_access_key(x_app_key)
+    try:
+        return _runtime_settings()
+    except SettingsError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.put("/api/email-settings")
+def put_email_settings(
+    payload: dict[str, Any] = Body(...),
+    x_app_key: str | None = Header(default=None),
+) -> dict[str, Any]:
+    require_access_key(x_app_key)
+    try:
+        return save_email_settings(EMAIL_SETTINGS_PATH, CONFIG_PATH, payload)
+    except SettingsError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/runs")
@@ -302,9 +340,10 @@ async def create_run(
     if send_mode not in {"none", "test", "live"}:
         raise HTTPException(status_code=400, detail="send_mode ต้องเป็น none, test หรือ live")
     if send_mode == "test":
-        candidate = (test_email or os.getenv("TEST_EMAIL_DEFAULT", "")).strip()
+        saved_test_email = str(_runtime_settings().get("test_email", "")).strip()
+        candidate = (test_email or saved_test_email).strip()
         if "@" not in candidate or "." not in candidate.rsplit("@", 1)[-1]:
-            raise HTTPException(status_code=400, detail="กรุณากรอกอีเมลทดสอบให้ถูกต้อง")
+            raise HTTPException(status_code=400, detail="กรุณาบันทึก Test Email ให้ถูกต้องก่อนทดสอบส่ง")
         test_email = candidate
     else:
         test_email = None
