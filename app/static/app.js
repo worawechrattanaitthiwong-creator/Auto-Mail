@@ -129,6 +129,7 @@ async function loadConfig() {
   const response = await fetch('/api/config-status');
   config = await response.json();
   accessRow.hidden = !config.access_key_required;
+  if (!testEmail.value && config.test_email_default) testEmail.value = config.test_email_default;
   renderInboxStatus();
 
   const driveText = config.drive_fallback_enabled && config.drive_configured
