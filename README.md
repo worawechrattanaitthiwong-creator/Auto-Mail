@@ -4,7 +4,7 @@
 
 1. `TransferOrder_YYYYMMDD...xlsx` → แยกเป็น 7 ไฟล์ตาม logic เดิมใน VBA
 2. `PurchaseOrder_YYYYMMDD...xlsx` → แยกเป็น 4 ไฟล์ตาม logic เดิมใน VBA
-3. `TransferOrderDiff_YYYYMMDD...xlsx` → ไม่แยกข้อมูล เปลี่ยนชื่อเป็น `TransferOrderDiff_ DD-MM-YYYY Time 09.00.xlsx`
+3. `TransferOrderDiff_YYYYMMDD...xlsx` → ไม่แยกข้อมูล เปลี่ยนชื่อเป็น `TransferOrderDiff_ DD-MM-YYYY Time 19.00.xlsx`
 
 จากนั้นระบบจัด 12 ไฟล์เข้า 6 email jobs และรองรับ To / CC / Subject / Body ที่กำหนดไว้ใน `config/email_jobs.json`.
 
@@ -44,7 +44,7 @@ Template ใน `config/email_jobs.json` เรียงตามตัวอย
 5. Transfer Received → 1 attachment
 6. Transfer Deleted + TransferOrderDiff → 2 attachments
 
-Subject และ Body ใช้วันที่ `{date_slash}` (`DD/MM/YYYY`) และเวลา `09.00` อัตโนมัติ. ช่อง `to` และ `cc` ยังเว้นว่างไว้จนกว่าจะได้รับรายชื่อผู้รับจริง.
+Subject และ Body ใช้วันที่ `{date_slash}` (`DD/MM/YYYY`) และเวลา `19.00` อัตโนมัติ. ช่อง `to` และ `cc` ยังเว้นว่างไว้จนกว่าจะได้รับรายชื่อผู้รับจริง.
 
 ## 3 โหมดการทำงาน
 
