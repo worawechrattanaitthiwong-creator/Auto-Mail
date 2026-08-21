@@ -12,7 +12,7 @@
       <div>
         <p class="eyebrow">REPORT AUTOMATION</p>
         <h1>Auto Mail</h1>
-        <p class="lead">มี 2 ช่องทางทำงาน: ตรวจ Inbox อัตโนมัติ และแนบไฟล์เองบนหน้าเว็บ ทั้งสองแบบใช้กฎแยกไฟล์และส่งอีเมล 6 ชุดเดียวกัน</p>
+        <p class="lead">ตรวจ Inbox อัตโนมัติ, แนบไฟล์ต้นทาง 3 รายงาน หรือส่งต่อจาก ZIP ผลลัพธ์เดิมโดยไม่ประมวลผลซ้ำ</p>
       </div>
       <div class="badge" id="configBadge">กำลังตรวจการตั้งค่า…</div>
     </section>
@@ -34,8 +34,8 @@
           <span class="badge ok">Manual พร้อมใช้</span>
         </div>
         <h2>Manual Upload</h2>
-        <p>ใช้เป็นช่องทางหลักหรือสำรองได้ตลอด แนบ TransferOrder, PurchaseOrder และ TransferOrderDiff แล้วกดทำงานเอง</p>
-        <div class="mode-detail">เหมาะกับวันที่ไฟล์ใหญ่ส่งเข้าเมลไม่ได้ หรือ Auto Inbox มีปัญหา</div>
+        <p>แนบ TransferOrder, PurchaseOrder และ TransferOrderDiff แล้วประมวลผลเอง</p>
+        <div class="mode-detail">หลังประมวลผลแล้วสามารถส่งจากผลลัพธ์เดิมได้ ไม่ต้องทำ Excel ซ้ำ</div>
       </article>
     </section>
 
@@ -50,8 +50,8 @@
 
       <div class="access-row" id="accessRow" hidden>
         <label for="accessKey">Access key</label>
-        <input id="accessKey" type="password" placeholder="กรอก access key แล้วกดออกจากช่องเพื่อโหลด Settings">
-        <small>ใช้สำหรับป้องกันหน้า Settings และคำสั่งส่งเมลเมื่อเว็บเปิดผ่านอินเทอร์เน็ต</small>
+        <input id="accessKey" type="password" placeholder="กรอก access key">
+        <small>จะแสดงเฉพาะเมื่อผู้ดูแลเปิด Access Control</small>
       </div>
 
       <div class="settings-test">
@@ -68,6 +68,30 @@
         <div class="settings-message" id="settingsMessage">แก้ไขแล้วกด Save Settings เพื่อบันทึก</div>
         <button class="primary" id="saveEmailSettings" disabled>Save Settings</button>
       </div>
+    </section>
+
+    <section class="panel" id="outputZipPanel">
+      <div class="panel-head">
+        <div>
+          <h2>ส่งจาก ZIP ผลลัพธ์เดิม — ไม่ประมวลผลซ้ำ</h2>
+          <p>ใช้ไฟล์ ZIP ที่ดาวน์โหลดหลัง Process Only ระบบจะตรวจ 12 ไฟล์แล้วพร้อม Test Send / Live Send ทันที</p>
+        </div>
+        <span class="badge ok">ประหยัดเวลา</span>
+      </div>
+
+      <label class="dropzone compact-dropzone" id="outputZipDropzone">
+        <input id="outputZip" type="file" accept=".zip">
+        <span class="drop-icon">ZIP</span>
+        <strong>เลือก ZIP ผลลัพธ์ที่ดาวน์โหลดไว้</strong>
+        <small id="outputZipName">ยังไม่ได้เลือกไฟล์</small>
+      </label>
+
+      <div class="actions">
+        <button class="secondary" id="loadOutputZip" disabled>โหลด ZIP 12 ไฟล์</button>
+        <button class="secondary" id="zipTestSend" disabled>Test Send จาก ZIP</button>
+        <button class="primary" id="zipLiveSend" disabled>Live Send จาก ZIP</button>
+      </div>
+      <p class="safety-note" id="outputZipStatus">ZIP จะถูกแตกและตรวจชื่อ/วันที่เท่านั้น ไม่มีการอ่านข้อมูล Excel ใหม่</p>
     </section>
 
     <section class="panel">
@@ -89,10 +113,10 @@
 
       <div class="actions">
         <button class="secondary" id="processOnly" disabled>Process Only</button>
-        <button class="secondary" id="testSend" disabled>Test Send 6 Emails</button>
-        <button class="primary" id="runSend" disabled>Live Send</button>
+        <button class="secondary" id="testSend" disabled>Process + Test Send</button>
+        <button class="primary" id="runSend" disabled>Process + Live Send</button>
       </div>
-      <p class="safety-note">Test Send: ใช้ Test Email ที่บันทึกไว้ · Live Send: ใช้ To/CC ของเมล 1–6 ที่บันทึกไว้</p>
+      <p class="safety-note">ถ้าประมวลผลเสร็จแล้ว ไม่ต้องเลือก 3 ไฟล์ใหม่ — ใช้ปุ่มส่งจากผลลัพธ์เดิมหรือ ZIP ด้านบน</p>
     </section>
 
     <section class="panel progress-panel" id="progressPanel" hidden>
