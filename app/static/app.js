@@ -2,7 +2,9 @@ const input = document.querySelector('#files');
 const dropzone = document.querySelector('#dropzone');
 const fileGrid = document.querySelector('#fileGrid');
 const runSend = document.querySelector('#runSend');
+const testSend = document.querySelector('#testSend');
 const processOnly = document.querySelector('#processOnly');
+const testEmail = document.querySelector('#testEmail');
 const progressPanel = document.querySelector('#progressPanel');
 const statusText = document.querySelector('#statusText');
 const progressValue = document.querySelector('#progressValue');
@@ -32,6 +34,22 @@ function classify(name) {
   return found ? found[0] : 'ไม่รู้จัก';
 }
 
+function validFileSet() {
+  const kinds = new Set(selectedFiles.map(file => classify(file.name)));
+  return selectedFiles.length === 3 && ['TransferOrder', 'PurchaseOrder', 'TransferOrderDiff'].every(k => kinds.has(k));
+}
+
+function looksLikeEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function refreshButtons() {
+  const valid = validFileSet();
+  processOnly.disabled = !valid;
+  testSend.disabled = !valid || !looksLikeEmail(testEmail.value) || !(config && config.test_ready);
+  runSend.disabled = !valid || !(config && config.live_ready);
+}
+
 function renderFiles() {
   fileGrid.innerHTML = selectedFiles.map(file => {
     const kind = classify(file.name);
@@ -41,10 +59,7 @@ function renderFiles() {
       <div class="name" title="${safeName}">${safeName}</div>
     </div>`;
   }).join('');
-  const kinds = new Set(selectedFiles.map(file => classify(file.name)));
-  const valid = selectedFiles.length === 3 && ['TransferOrder', 'PurchaseOrder', 'TransferOrderDiff'].every(k => kinds.has(k));
-  runSend.disabled = !valid;
-  processOnly.disabled = !valid;
+  refreshButtons();
 }
 
 function setFiles(files) {
@@ -53,6 +68,7 @@ function setFiles(files) {
 }
 
 input.addEventListener('change', () => setFiles(input.files));
+testEmail.addEventListener('input', refreshButtons);
 ['dragenter', 'dragover'].forEach(name => dropzone.addEventListener(name, event => {
   event.preventDefault(); dropzone.classList.add('drag');
 }));
@@ -71,16 +87,21 @@ async function loadConfig() {
   const response = await fetch('/api/config-status');
   config = await response.json();
   accessRow.hidden = !config.access_key_required;
-  if (config.email_send_enabled && config.smtp_configured && config.jobs_enabled && config.jobs_with_recipients === config.jobs_enabled) {
-    configBadge.textContent = `Email พร้อมส่ง · ${config.jobs_enabled} jobs`;
+
+  if (config.live_ready) {
+    configBadge.textContent = `Live พร้อมส่ง · ${config.jobs_enabled} jobs`;
     configBadge.className = 'badge ok';
+  } else if (config.test_ready) {
+    configBadge.textContent = `Test พร้อม · Live รอ To/CC (${config.jobs_with_recipients}/${config.jobs_enabled})`;
+    configBadge.className = 'badge warn';
   } else {
-    configBadge.textContent = `Email ยังไม่พร้อม · ${config.jobs_enabled}/${config.jobs_total} jobs เปิดใช้`;
+    configBadge.textContent = 'Email ยังไม่พร้อม · ตั้งค่า SMTP ก่อน';
     configBadge.className = 'badge warn';
   }
+  refreshButtons();
 }
 
-async function startRun(sendEmail) {
+async function startRun(sendMode) {
   result.className = 'result';
   result.innerHTML = '';
   progressPanel.hidden = false;
@@ -89,11 +110,13 @@ async function startRun(sendEmail) {
   progressValue.textContent = '0%';
   progressBar.style.width = '0%';
   runSend.disabled = true;
+  testSend.disabled = true;
   processOnly.disabled = true;
 
   const form = new FormData();
   selectedFiles.forEach(file => form.append('files', file));
-  form.append('send_email', sendEmail ? 'true' : 'false');
+  form.append('send_mode', sendMode);
+  if (sendMode === 'test') form.append('test_email', testEmail.value.trim());
 
   try {
     const response = await fetch('/api/runs', { method: 'POST', headers: headers(), body: form });
@@ -117,8 +140,11 @@ async function poll(runId) {
 
     if (state.status === 'completed') {
       const items = state.outputs.map(name => `<li>${escapeHtml(name)}</li>`).join('');
+      let sendSummary = '';
+      if (state.send_mode === 'test') sendSummary = ` · ทดสอบส่ง ${state.emails.length} ฉบับไปที่ ${escapeHtml(state.test_email || '')}`;
+      if (state.send_mode === 'live') sendSummary = ` · ส่งจริง ${state.emails.length} ฉบับ`;
       result.className = 'result success';
-      result.innerHTML = `<strong>สำเร็จ</strong> · ได้ไฟล์ ${state.outputs.length} ไฟล์${state.send_email ? ` · ส่ง ${state.emails.length} อีเมล` : ''}
+      result.innerHTML = `<strong>สำเร็จ</strong> · ได้ไฟล์ ${state.outputs.length} ไฟล์${sendSummary}
         <ul class="output-list">${items}</ul>
         <a href="/api/runs/${runId}/download" data-download="${runId}">ดาวน์โหลดไฟล์ทั้งหมด (.zip)</a>`;
       const link = result.querySelector('a');
@@ -152,6 +178,9 @@ function showError(message) {
   result.textContent = message;
 }
 
-runSend.addEventListener('click', () => startRun(true));
-processOnly.addEventListener('click', () => startRun(false));
+runSend.addEventListener('click', () => {
+  if (window.confirm('ยืนยัน Live Send? ระบบจะส่งไปยัง To/CC จริงตามที่ตั้งค่าไว้')) startRun('live');
+});
+testSend.addEventListener('click', () => startRun('test'));
+processOnly.addEventListener('click', () => startRun('none'));
 loadConfig();
