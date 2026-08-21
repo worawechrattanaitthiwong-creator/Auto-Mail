@@ -10,9 +10,9 @@
   <main class="shell">
     <section class="hero">
       <div>
-        <p class="eyebrow">EVEANDBOY REPORT AUTOMATION</p>
+        <p class="eyebrow">REPORT AUTOMATION</p>
         <h1>Auto Mail</h1>
-        <p class="lead">แนบ 3 ไฟล์ แล้วให้ระบบแยก 7 + 4 ไฟล์ เปลี่ยนชื่อ TransferOrderDiff และส่งอีเมลตามชุดที่กำหนด</p>
+        <p class="lead">รับไฟล์ 3 รายงาน แยกเป็น 7 + 4 ไฟล์ เปลี่ยนชื่อ TransferOrderDiff และจัดส่งอีเมล 6 ชุดอัตโนมัติ</p>
       </div>
       <div class="badge" id="configBadge">กำลังตรวจการตั้งค่า…</div>
     </section>
@@ -34,6 +34,12 @@
 
       <div class="file-grid" id="fileGrid"></div>
 
+      <div class="access-row" id="testEmailRow">
+        <label for="testEmail">อีเมลสำหรับทดสอบ</label>
+        <input id="testEmail" type="email" autocomplete="email" placeholder="เช่น yourname@gmail.com">
+        <small>Test Send จะส่งทั้ง 6 ฉบับมาที่อีเมลนี้เท่านั้น และจะไม่ใช้ To/CC จริง</small>
+      </div>
+
       <div class="access-row" id="accessRow" hidden>
         <label for="accessKey">Access key</label>
         <input id="accessKey" type="password" placeholder="กรอก access key สำหรับเว็บนี้">
@@ -41,8 +47,10 @@
 
       <div class="actions">
         <button class="secondary" id="processOnly" disabled>Process Only</button>
-        <button class="primary" id="runSend" disabled>Run &amp; Send Emails</button>
+        <button class="secondary" id="testSend" disabled>Test Send 6 Emails</button>
+        <button class="primary" id="runSend" disabled>Live Send</button>
       </div>
+      <p class="safety-note">Test Send: ผู้รับจริง/CC จริงจะไม่ถูกส่ง · Live Send: ใช้ To/CC ที่ตั้งค่าไว้จริง</p>
     </section>
 
     <section class="panel progress-panel" id="progressPanel" hidden>
