@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Auto Mail</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">REPORT AUTOMATION</p>
+        <h1>Auto Mail</h1>
+        <p class="lead">ตรวจ Inbox อัตโนมัติ, แนบไฟล์ต้นทาง 3 รายงาน หรือส่งต่อจาก ZIP ผลลัพธ์เดิมโดยไม่ประมวลผลซ้ำ</p>
+      </div>
+      <div class="badge" id="configBadge">กำลังตรวจการตั้งค่า…</div>
+    </section>
+
+    <section class="mode-grid" aria-label="ช่องทางการทำงาน">
+      <article class="mode-card">
+        <div class="mode-topline">
+          <span class="mode-number">1</span>
+          <span class="badge" id="autoInboxBadge">กำลังตรวจ Auto Inbox…</span>
+        </div>
+        <h2>Auto Inbox</h2>
+        <p>ระบบตรวจเมลกลางและรอรายงานของวันเดียวกันให้ครบ 3 ชนิดก่อนเริ่มทำงานอัตโนมัติ</p>
+        <div class="mode-detail" id="autoInboxDetail">กำลังอ่านสถานะ…</div>
+      </article>
+
+      <article class="mode-card">
+        <div class="mode-topline">
+          <span class="mode-number">2</span>
+          <span class="badge ok">Manual พร้อมใช้</span>
+        </div>
+        <h2>Manual Upload</h2>
+        <p>แนบ TransferOrder, PurchaseOrder และ TransferOrderDiff แล้วประมวลผลเอง</p>
+        <div class="mode-detail">หลังประมวลผลแล้วสามารถส่งจากผลลัพธ์เดิมได้ ไม่ต้องทำ Excel ซ้ำ</div>
+      </article>
+    </section>
+
+    <section class="panel" id="emailSettingsPanel">
+      <div class="panel-head">
+        <div>
+          <h2>Email Settings — ผู้รับเมล 1–6</h2>
+          <p>กำหนด Test Email, To และ CC ได้เอง แล้วกดบันทึก ระบบจะใช้ค่าที่บันทึกกับทั้ง Manual และ Auto Inbox</p>
+        </div>
+        <span class="badge" id="settingsBadge">กำลังโหลด…</span>
+      </div>
+
+      <div class="access-row" id="accessRow" hidden>
+        <label for="accessKey">Access key</label>
+        <input id="accessKey" type="password" placeholder="กรอก access key">
+        <small>จะแสดงเฉพาะเมื่อผู้ดูแลเปิด Access Control</small>
+      </div>
+
+      <div class="settings-test">
+        <label for="testEmail">Test Email</label>
+        <input id="testEmail" type="email" autocomplete="email" placeholder="อีเมลที่ต้องการรับ Test Send ทั้ง 6 ฉบับ">
+        <small>Test Send จะส่งไปที่อีเมลนี้เท่านั้น และไม่ใช้ To/CC จริง</small>
+      </div>
+
+      <div class="settings-grid" id="emailJobsSettings">
+        <div class="settings-placeholder">กำลังโหลดผู้รับเมล 1–6…</div>
+      </div>
+
+      <div class="settings-footer">
+        <div class="settings-message" id="settingsMessage">แก้ไขแล้วกด Save Settings เพื่อบันทึก</div>
+        <button class="primary" id="saveEmailSettings" disabled>Save Settings</button>
+      </div>
+    </section>
+
+    <section class="panel" id="outputZipPanel">
+      <div class="panel-head">
+        <div>
+          <h2>ส่งจาก ZIP ผลลัพธ์เดิม — ไม่ประมวลผลซ้ำ</h2>
+          <p>ใช้ไฟล์ ZIP ที่ดาวน์โหลดหลัง Process Only ระบบจะตรวจ 12 ไฟล์แล้วพร้อม Test Send / Live Send ทันที</p>
+        </div>
+        <span class="badge ok">ประหยัดเวลา</span>
+      </div>
+
+      <label class="dropzone compact-dropzone" id="outputZipDropzone">
+        <input id="outputZip" type="file" accept=".zip">
+        <span class="drop-icon">ZIP</span>
+        <strong>เลือก ZIP ผลลัพธ์ที่ดาวน์โหลดไว้</strong>
+        <small id="outputZipName">ยังไม่ได้เลือกไฟล์</small>
+      </label>
+
+      <div class="actions">
+        <button class="secondary" id="loadOutputZip" disabled>โหลด ZIP 12 ไฟล์</button>
+        <button class="secondary" id="zipTestSend" disabled>Test Send จาก ZIP</button>
+        <button class="primary" id="zipLiveSend" disabled>Live Send จาก ZIP</button>
+      </div>
+      <p class="safety-note" id="outputZipStatus">ZIP จะถูกแตกและตรวจชื่อ/วันที่เท่านั้น ไม่มีการอ่านข้อมูล Excel ใหม่</p>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Manual Upload — แนบไฟล์ 3 รายงาน</h2>
+          <p>เลือกพร้อมกัน 3 ไฟล์ ระบบจะจำแนกจากชื่อไฟล์และตรวจวันที่ให้อัตโนมัติ</p>
+        </div>
+      </div>
+
+      <label class="dropzone" id="dropzone">
+        <input id="files" type="file" accept=".xlsx" multiple>
+        <span class="drop-icon">＋</span>
+        <strong>คลิกเพื่อเลือก หรือวางไฟล์ที่นี่</strong>
+        <small>TransferOrder / PurchaseOrder / TransferOrderDiff</small>
+      </label>
+
+      <div class="file-grid" id="fileGrid"></div>
+
+      <div class="actions">
+        <button class="secondary" id="processOnly" disabled>Process Only</button>
+        <button class="secondary" id="testSend" disabled>Process + Test Send</button>
+        <button class="primary" id="runSend" disabled>Process + Live Send</button>
+      </div>
+      <p class="safety-note">ถ้าประมวลผลเสร็จแล้ว ไม่ต้องเลือก 3 ไฟล์ใหม่ — ใช้ปุ่มส่งจากผลลัพธ์เดิมหรือ ZIP ด้านบน</p>
+    </section>
+
+    <section class="panel progress-panel" id="progressPanel" hidden>
+      <div class="progress-title">
+        <div>
+          <h2>สถานะการทำงาน</h2>
+          <p id="statusText">กำลังเริ่มงาน…</p>
+        </div>
+        <strong id="progressValue">0%</strong>
+      </div>
+      <div class="progress-track"><div id="progressBar"></div></div>
+      <div class="result" id="result"></div>
+    </section>
+  </main>
+  <script src="/static/app.js"></script>
+  <script src="/static/test-send-fix.js"></script>
+</body>
+</html>

@@ -1,0 +1,62 @@
+[
+  {
+    "id": "scx_ffm_in_out_and_po",
+    "name": "1. Transfer SCX_FFM In/Out + PO In",
+    "enabled": true,
+    "to": [],
+    "cc": [],
+    "subject": "อัปเดตข้อมูล Transfer TF SCX_FFM B2C In/Out และ Po In {date_slash} Time {time} น",
+    "body": "เรียน ผู้เกี่ยวข้อง\nอัปเดตข้อมูล Transfer TF SCX_FFM B2C In/Out และ Po In {date_slash} Time {time} น\nรายละเอียดตามไฟล์แนบ\n\nทั้งนี้หากต้องการข้อมูลส่วนไหนเพิ่มเติมแจ้งได้เลย\n\nขอบคุณครับ\nWorawech.R",
+    "attachments": ["transfer_scx_ffm_in", "transfer_scx_ffm_out", "purchase_rc_scx_ffm"]
+  },
+  {
+    "id": "zz_cnn_transfer_and_po",
+    "name": "2. Transfer ZZ_CNN + PRT.ZZ_CNN",
+    "enabled": true,
+    "to": [],
+    "cc": [],
+    "subject": "อัปเดตข้อมูล Transfer store to ZZ_CNN /PRT. ZZ_CNN all status {date_slash} Time {time}น.",
+    "body": "เรียน ผู้เกี่ยวข้อง\nอัปเดตข้อมูล Transfer store to ZZ_CNN /PRT. ZZ_CNN all status {date_slash} Time {time}น.\nรายละเอียดตามไฟล์แนบ\n\nทั้งนี้หากต้องการข้อมูลส่วนไหนเพิ่มเติมแจ้งได้เลย\n\nขอบคุณครับ\nWorawech.R",
+    "attachments": ["transfer_zz_cnn_in", "purchase_prt_zz_cnn"]
+  },
+  {
+    "id": "shipped_created_and_scx_wh1",
+    "name": "3. Shipped + Created + PO SCX_WH1",
+    "enabled": true,
+    "to": [],
+    "cc": [],
+    "subject": "อัปเดตข้อมูล Transfer Order lines all Store status Shipped / Created และ PO SCX_WH1 all status {date_slash} Time {time}น.",
+    "body": "เรียน ผู้เกี่ยวข้อง\nอัปเดตข้อมูล Transfer Order lines all Store status Shipped / Created และ PO SCX_WH1 all status {date_slash} Time {time}น.\nรายละเอียดตามไฟล์แนบ\n\nทั้งนี้หากต้องการข้อมูลส่วนไหนเพิ่มเติมแจ้งได้เลย\n\nขอบคุณครับ\nWorawech.R",
+    "attachments": ["transfer_status_shipped", "transfer_status_created", "purchase_rc_scx_wh1"]
+  },
+  {
+    "id": "purchase_scx_xd",
+    "name": "4. Purchase SCX_XD",
+    "enabled": true,
+    "to": [],
+    "cc": [],
+    "subject": "อัปเดตข้อมูล Purchase order SCX_XD all status {date_slash} Time {time}น.",
+    "body": "เรียน ผู้เกี่ยวข้อง\nอัปเดตข้อมูล Purchase order SCX_XD all status {date_slash} Time {time}น.\nรายละเอียดตามไฟล์แนบ\n\nทั้งนี้หากต้องการข้อมูลส่วนไหนเพิ่มเติมแจ้งได้เลย\n\nขอบคุณครับ\nWorawech.R",
+    "attachments": ["purchase_rc_scx_xd"]
+  },
+  {
+    "id": "transfer_received",
+    "name": "5. Transfer Received",
+    "enabled": true,
+    "to": [],
+    "cc": [],
+    "subject": "อัปเดต Transfer Order lines all Store status Received {date_slash} Time {time}น",
+    "body": "เรียน ผู้เกี่ยวข้อง\nอัปเดตข้อมูล Transfer Order lines all Store status Received {date_slash} Time {time}น.\nรายละเอียดตามไฟล์แนบ\n\nทั้งนี้หากต้องการข้อมูลส่วนไหนเพิ่มเติมแจ้งได้เลย\n\nขอบคุณครับ\nWorawech.R",
+    "attachments": ["transfer_status_received"]
+  },
+  {
+    "id": "deleted_and_diff",
+    "name": "6. Transfer Deleted + TF Diff",
+    "enabled": true,
+    "to": [],
+    "cc": [],
+    "subject": "อัปเดตTransfer Order lines all Store status Deleted / TF Diff {date_slash} Time {time}น.",
+    "body": "เรียน ผู้เกี่ยวข้อง\nอัปเดตข้อมูล Transfer Order lines all Store status Deleted / TF Diff {date_slash} Time {time}น.\nรายละเอียดตามไฟล์แนบ\n\nทั้งนี้หากต้องการข้อมูลส่วนไหนเพิ่มเติมแจ้งได้เลย\n\nขอบคุณครับ\nWorawech.R",
+    "attachments": ["transfer_status_deleted", "transfer_order_diff"]
+  }
+]
