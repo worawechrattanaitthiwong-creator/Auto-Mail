@@ -2,6 +2,6 @@ __pycache__/
 *.py[cod]
 .venv/
 .env
-data/runs/
+data/
 .pytest_cache/
 .DS_Store
