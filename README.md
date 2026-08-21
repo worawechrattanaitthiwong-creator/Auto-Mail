@@ -1,6 +1,11 @@
 # Auto-Mail
 
-เว็บแอปสำหรับงานรายงานรอบ **19.00** โดยรับไฟล์ต้นทาง 3 ชนิด:
+เว็บแอปสำหรับงานรายงานรอบ **19.00** โดยมี **2 ช่องทางรับข้อมูล** ที่ใช้ processor และ email templates ชุดเดียวกัน:
+
+1. **Auto Inbox** — ตรวจเมลกลางอัตโนมัติและรอรายงานของวันเดียวกันให้ครบ 3 ชนิด
+2. **Manual Upload** — ผู้ใช้แนบไฟล์ 3 ไฟล์บนหน้าเว็บเอง ใช้เป็นช่องทางหลักหรือ fallback ได้ตลอด
+
+ไฟล์ต้นทาง 3 ชนิดคือ:
 
 1. `TransferOrder_YYYYMMDD...xlsx` → แยกเป็น 7 ไฟล์ตาม logic เดิมใน VBA
 2. `PurchaseOrder_YYYYMMDD...xlsx` → แยกเป็น 4 ไฟล์ตาม logic เดิมใน VBA
@@ -9,6 +14,18 @@
 จากนั้นระบบจัด output 12 ไฟล์เข้า 6 email jobs พร้อม To / CC / Subject / Body ตาม `config/email_jobs.json`.
 
 > รอบ 09.00 ไม่อยู่ใน automation นี้และส่งเองตาม workflow เดิม
+
+## 2 ช่องทางรับรายงาน
+
+### 1) Auto Inbox
+
+Watcher ตรวจ Inbox ของเมลกลางและจับ attachment ตามชื่อ `TransferOrder`, `PurchaseOrder`, `TransferOrderDiff` เมื่อครบทั้ง 3 ชนิดของวันเดียวกันจึงเริ่มประมวลผลและ Live Send อัตโนมัติ.
+
+ข้อจำกัด: ผู้ให้บริการอีเมลอาจปฏิเสธเมลต้นทางที่มีไฟล์ใหญ่มาก เช่น PurchaseOrder ประมาณ 40 MB. ถ้าเมลนั้นเข้า Inbox ไม่ได้ ให้ใช้ Manual Upload แทนในวันนั้น โดยไม่ต้องเปลี่ยน logic การประมวลผลหรือการส่งออก.
+
+### 2) Manual Upload
+
+หน้าเว็บรับไฟล์ 3 ไฟล์พร้อมกัน ตรวจชนิดและวันที่จากชื่อไฟล์ แล้วให้เลือก `Process Only`, `Test Send 6 Emails`, หรือ `Live Send`. ช่องทางนี้ใช้งานได้แม้ Auto Inbox ปิดอยู่หรือไฟล์ต้นทางใหญ่เกินข้อจำกัดของอีเมล.
 
 ## Output time
 
@@ -80,7 +97,7 @@ GOOGLE_DRIVE_SHARE_MODE=anyone_with_link
 
 หาก Drive fallback ยังไม่ถูกตั้งค่าและมี email group เกิน threshold ระบบจะ **หยุดก่อนส่ง** แทนการส่งไม่ครบชุด.
 
-## 3 โหมดการทำงาน
+## 3 โหมดการทำงานจาก Manual Upload
 
 ### Process Only
 
@@ -115,8 +132,6 @@ SMTP_USE_SSL=false
 ```
 
 ## Gmail Inbox watcher
-
-ระบบมี watcher สำหรับเมลกลางแล้ว โดยตรวจ attachment จากชื่อไฟล์ `TransferOrder`, `PurchaseOrder`, `TransferOrderDiff` และจัดกลุ่มตามวันที่ในชื่อไฟล์ เมื่อครบทั้ง 3 ชนิดของวันเดียวกัน ระบบจะสร้าง run ใหม่และส่ง 6 เมลแบบ Live อัตโนมัติ.
 
 ```env
 INBOX_WATCH_ENABLED=true
