@@ -130,7 +130,7 @@ def process_transfer_order(
         "TransferOrder",
     )
     report_year = report_date.year
-    stamp = f"{_date_text(report_date)} 09.00"
+    stamp = f"{_date_text(report_date)} 19.00"
 
     paths: dict[str, Path] = {
         f"transfer_status_{status.lower()}": output_dir
@@ -197,7 +197,7 @@ def process_purchase_order(
 
     columns = _require_headers(header, ("PurchaseCreatedDateTime", "INVENTLOCATIONID"), "PurchaseOrder")
     report_year = report_date.year
-    stamp = f"{_date_text(report_date)} 09.00"
+    stamp = f"{_date_text(report_date)} 19.00"
 
     paths = {
         f"purchase_{prefix.lower().replace('.', '_')}": output_dir / f"{prefix} {stamp}.xlsx"
@@ -234,7 +234,7 @@ def process_purchase_order(
 
 def rename_transfer_order_diff(source: Path, output_dir: Path, report_date: date) -> dict[str, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
-    target = output_dir / f"TransferOrderDiff_ {_date_text(report_date)} Time 09.00.xlsx"
+    target = output_dir / f"TransferOrderDiff_ {_date_text(report_date)} Time 19.00.xlsx"
     shutil.copy2(source, target)
     return {"transfer_order_diff": target}
 
