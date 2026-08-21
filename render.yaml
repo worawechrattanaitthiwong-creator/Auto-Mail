@@ -1,0 +1,61 @@
+services:
+  - type: web
+    name: auto-mail
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    envVars:
+      - key: APP_ACCESS_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: EMAIL_SEND_ENABLED
+        value: "false"
+      - key: TEST_EMAIL_DEFAULT
+        sync: false
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: SMTP_USE_TLS
+        value: "true"
+      - key: SMTP_USE_SSL
+        value: "false"
+      - key: DIRECT_ATTACHMENT_MAX_MB
+        value: "20"
+      - key: DRIVE_FALLBACK_ENABLED
+        value: "false"
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REFRESH_TOKEN
+        sync: false
+      - key: GOOGLE_DRIVE_FOLDER_ID
+        sync: false
+      - key: GOOGLE_DRIVE_SHARE_MODE
+        value: anyone_with_link
+      - key: INBOX_WATCH_ENABLED
+        value: "false"
+      - key: INBOX_HOST
+        value: imap.gmail.com
+      - key: INBOX_PORT
+        value: "993"
+      - key: INBOX_USERNAME
+        sync: false
+      - key: INBOX_PASSWORD
+        sync: false
+      - key: INBOX_FOLDER
+        value: INBOX
+      - key: INBOX_POLL_SECONDS
+        value: "60"
+      - key: INBOX_ALLOWED_SENDERS
+        sync: false
