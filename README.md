@@ -11,9 +11,27 @@
 2. `PurchaseOrder_YYYYMMDD...xlsx` → แยกเป็น 4 ไฟล์ตาม logic เดิมใน VBA
 3. `TransferOrderDiff_YYYYMMDD...xlsx` → ไม่แยกข้อมูล เปลี่ยนชื่อเป็น `TransferOrderDiff_ DD-MM-YYYY Time 19.00.xlsx`
 
-จากนั้นระบบจัด output 12 ไฟล์เข้า 6 email jobs พร้อม To / CC / Subject / Body ตาม `config/email_jobs.json`.
+จากนั้นระบบจัด output 12 ไฟล์เข้า 6 email jobs.
 
 > รอบ 09.00 ไม่อยู่ใน automation นี้และส่งเองตาม workflow เดิม
+
+## Email Settings บนหน้าเว็บ
+
+ผู้ใช้กำหนดผู้รับได้เองโดยไม่ต้องแก้โค้ด:
+
+- `Test Email` — ผู้รับสำหรับ Test Send ทั้ง 6 ฉบับ
+- Email 1–6 — แต่ละชุดมีช่อง `TO` และ `CC`
+- รองรับหลายอีเมล โดยคั่นด้วย `;`, `,` หรือขึ้นบรรทัดใหม่
+- กด **Save Settings** แล้ว Test Send / Live Send / Auto Inbox จะใช้ค่าที่บันทึกไว้ชุดเดียวกัน
+- Subject, Body และการจับคู่ไฟล์ยังมาจาก `config/email_jobs.json` เพื่อป้องกันการแก้ template โดยไม่ตั้งใจ
+
+ค่าผู้รับถูกบันทึกเป็น runtime data ที่ `data/email_settings.json` (หรือใต้ `AUTO_MAIL_DATA_DIR`) และ `data/` ถูก ignore จาก GitHub จึงไม่ commit รายชื่อผู้รับจริงลง public repository.
+
+สำหรับ production ควรผูก `AUTO_MAIL_DATA_DIR` กับ persistent disk/volume เพื่อให้ Settings, Inbox state และ run data ไม่หายเมื่อ container restart:
+
+```env
+AUTO_MAIL_DATA_DIR=/var/data/auto-mail
+```
 
 ## 2 ช่องทางรับรายงาน
 
@@ -105,7 +123,7 @@ GOOGLE_DRIVE_SHARE_MODE=anyone_with_link
 
 ### Test Send 6 Emails
 
-กรอกอีเมลทดสอบบนหน้าเว็บ แล้วระบบส่งทั้ง 6 template ไปที่อีเมลนั้นเพียงคนเดียว:
+ใช้ `Test Email` ที่บันทึกไว้ในหน้า Email Settings แล้วส่งทั้ง 6 template ไปที่อีเมลนั้นเพียงคนเดียว:
 
 - ไม่ใช้ To จริง
 - ไม่ใช้ CC จริง
@@ -114,7 +132,7 @@ GOOGLE_DRIVE_SHARE_MODE=anyone_with_link
 
 ### Live Send
 
-ส่ง To/CC จริงตาม `config/email_jobs.json`. หน้าเว็บจะไม่เปิด Live Send จนกว่า job ที่เปิดใช้งานทุกชุดจะมี To และมี confirmation ก่อนส่ง.
+ส่ง To/CC ของ Email 1–6 ที่บันทึกไว้บนหน้าเว็บ. ปุ่ม Live Send จะยังไม่พร้อมถ้า job ที่เปิดใช้งานชุดใดยังไม่มี `TO` และมี confirmation ก่อนส่ง.
 
 ## ตั้งค่า Gmail สำหรับส่งเมล
 
@@ -129,6 +147,12 @@ SMTP_PASSWORD=your-google-app-password
 SMTP_FROM=your-central-mail@gmail.com
 SMTP_USE_TLS=true
 SMTP_USE_SSL=false
+```
+
+`TEST_EMAIL_DEFAULT` เป็นค่าเริ่มต้นก่อนบันทึกผ่านหน้าเว็บครั้งแรกเท่านั้น และควรตั้งค่าจริงใน hosting secret:
+
+```env
+TEST_EMAIL_DEFAULT=
 ```
 
 ## Gmail Inbox watcher
@@ -148,7 +172,7 @@ INBOX_ALLOWED_SENDERS=your-company-email@example.com
 
 เพื่อความปลอดภัย ควรใส่ `INBOX_ALLOWED_SENDERS` เป็นอีเมลบริษัทที่ใช้ส่งรายงานจริง ระบบใช้ `BODY.PEEK[]` จึงไม่จำเป็นต้อง mark เมลเป็น read และมี state file ป้องกันการหยิบ batch เดิมมาส่งซ้ำหลัง restart.
 
-Watcher จะยังไม่เริ่ม Auto Send จนกว่า `EMAIL_SEND_ENABLED=true`, SMTP พร้อม และ email job ที่เปิดใช้ทุกชุดมีผู้รับ `To` ครบ. ควรรัน production ด้วย **1 application worker** เพื่อไม่ให้มี watcher หลายตัวใน instance เดียวกัน.
+Watcher จะยังไม่เริ่ม Auto Send จนกว่า `EMAIL_SEND_ENABLED=true`, SMTP พร้อม และ email job ที่เปิดใช้ทุกชุดมีผู้รับ `TO` ครบ. ควรรัน production ด้วย **1 application worker** เพื่อไม่ให้มี watcher หลายตัวใน instance เดียวกัน.
 
 ## Run locally
 
