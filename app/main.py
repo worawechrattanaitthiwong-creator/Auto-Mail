@@ -27,7 +27,7 @@ CONFIG_PATH = BASE_DIR / "config" / "email_jobs.json"
 STATIC_DIR = BASE_DIR / "app" / "static"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-app = FastAPI(title="Auto Mail", version="0.4.0")
+app = FastAPI(title="Auto Mail", version="0.4.1")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -179,7 +179,6 @@ def _launch_inbox_batch(watcher: GmailInboxWatcher, batch: ReadyBatch) -> str:
     with RUN_LOCK:
         RUNS[run_id] = state
 
-    # Claim the date before launching so a second poll cannot send the same batch twice.
     watcher.mark_launched(batch.report_date)
     worker = threading.Thread(
         target=run_pipeline,
@@ -277,6 +276,7 @@ def config_status(_: None = Header(default=None, alias="X-Ignored")) -> dict[str
         "jobs_enabled": len(enabled_jobs),
         "jobs_with_recipients": mail_config["jobs_with_recipients"],
         "test_ready": mail_config["email_send_enabled"] and mail_config["smtp_configured"] and bool(enabled_jobs),
+        "test_email_default": os.getenv("TEST_EMAIL_DEFAULT", "").strip(),
         "live_ready": mail_config["live_ready"],
         "drive_fallback_enabled": drive_fallback_enabled,
         "drive_configured": drive_configured,
@@ -302,7 +302,7 @@ async def create_run(
     if send_mode not in {"none", "test", "live"}:
         raise HTTPException(status_code=400, detail="send_mode ต้องเป็น none, test หรือ live")
     if send_mode == "test":
-        candidate = (test_email or "").strip()
+        candidate = (test_email or os.getenv("TEST_EMAIL_DEFAULT", "")).strip()
         if "@" not in candidate or "." not in candidate.rsplit("@", 1)[-1]:
             raise HTTPException(status_code=400, detail="กรุณากรอกอีเมลทดสอบให้ถูกต้อง")
         test_email = candidate
